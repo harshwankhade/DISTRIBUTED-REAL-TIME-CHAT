@@ -1,0 +1,2 @@
+"""Chat application server package."""
+
