@@ -19,9 +19,10 @@ manage this metadata. Authorization uses `authorization: Bearer <token>`.
 Phase 1 extracts the token without validating it or making authorization claims.
 
 Successful response messages use `ResponseStatus`. Transport/input failures use
-gRPC status codes. Skeleton feature calls return `UNIMPLEMENTED`; malformed
-input returns `INVALID_ARGUMENT`. Request IDs are echoed in response status or
-trailing metadata where possible.
+gRPC status codes. Auth, channel, and admin calls now execute Phase 2 behavior.
+Still-unimplemented chat, presence, file, and LLM calls return `UNIMPLEMENTED`
+after applicable authentication and validation. Request IDs are echoed in
+response status or trailing metadata where possible.
 
 Clients must set deadlines. The Phase 1 smoke client uses
 `RPC_TIMEOUT_SECONDS`; later operations may choose operation-specific deadlines.
@@ -31,12 +32,13 @@ Clients must set deadlines. The Phase 1 smoke client uses
 ### Chat application process
 
 - `HealthService`: transport health and node identity.
-- `AuthService`: login/logout contracts only.
-- `ChannelService`: create/list/join/leave contracts.
+- `AuthService`: working login and logout with expiring persisted sessions.
+- `ChannelService`: working create/list/join/leave with authorization.
 - `ChatService`: message send/history plus server-streamed events.
 - `PresenceService`: heartbeat/status plus presence event stream.
 - `FileService`: chunked client-streamed upload and server-streamed download.
-- `AdminService`: user, role/status, channel archive, and membership contracts.
+- `AdminService`: working user, role/status, channel archive, and membership
+  administration.
 
 ### Independent LLM process
 
@@ -67,4 +69,3 @@ Run:
 The Python generator locates the bundled protobuf include directory from
 `grpc_tools`, compiles all v1 sources, and writes `*_pb2.py` and
 `*_pb2_grpc.py` beside their source contracts.
-

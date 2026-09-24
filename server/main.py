@@ -16,6 +16,10 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="bind, print service identity, then stop instead of waiting",
     )
+    parser.add_argument(
+        "--bind",
+        help="override the configured bind address (use 127.0.0.1:0 for tests)",
+    )
     return parser
 
 
@@ -30,14 +34,16 @@ def main(argv: list[str] | None = None) -> int:
         node_id=settings.chat_node_id,
         level=settings.log_level,
     )
-    server, bound_address = create_chat_server(settings, logger=logger)
+    server, bound_address = create_chat_server(
+        settings, bind_address=args.bind, logger=logger
+    )
     server.start()
     logger.info(
         "service_started",
         extra={
-            "phase": 1,
+            "phase": 2,
             "skeleton": True,
-            "placeholder": True,
+            "placeholder": False,
             "service_name": "chat-server",
             "service_node_id": settings.chat_node_id,
             "listen_address": bound_address,

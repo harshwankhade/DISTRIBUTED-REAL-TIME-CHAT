@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import unittest
+import tempfile
+from pathlib import Path
 
 import grpc
 
@@ -20,6 +22,8 @@ from proto.chat.v1 import (
     llm_pb2_grpc,
 )
 from server.grpc_server import create_chat_server
+from server.database import Database
+from server.seed import seed_users
 
 
 def _channel(target: str, request_id: str, token: str | None = None) -> grpc.Channel:
@@ -32,8 +36,20 @@ def _channel(target: str, request_id: str, token: str | None = None) -> grpc.Cha
 class ChatGrpcSkeletonTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
+        cls.temp_directory = tempfile.TemporaryDirectory()
         cls.settings = load_settings(
-            {"STREAM_KEEPALIVE_SECONDS": "0.05", "RPC_TIMEOUT_SECONDS": "2"}
+            {
+                "STREAM_KEEPALIVE_SECONDS": "0.05",
+                "RPC_TIMEOUT_SECONDS": "2",
+                "CHAT_DATABASE_PATH": str(Path(cls.temp_directory.name) / "chat.db"),
+            }
+        )
+        seed_users(
+            Database(cls.settings.chat_database_path),
+            admin_username="admin",
+            admin_password="admin-password-123",
+            sample_usernames=["smoke-user"],
+            sample_password="smoke-password-123",
         )
         cls.server, cls.target = create_chat_server(
             cls.settings, bind_address="127.0.0.1:0"
@@ -43,6 +59,7 @@ class ChatGrpcSkeletonTests(unittest.TestCase):
     @classmethod
     def tearDownClass(cls) -> None:
         cls.server.stop(0).wait()
+        cls.temp_directory.cleanup()
 
     def test_health_echoes_request_id_and_extracts_token(self) -> None:
         request_id = "health-request-1"
@@ -61,7 +78,7 @@ class ChatGrpcSkeletonTests(unittest.TestCase):
         self.assertEqual(response.status.request_id, request_id)
         self.assertTrue(response.auth_metadata_present)
 
-    def test_login_skeleton_returns_unimplemented(self) -> None:
+    def test_unknown_login_returns_unauthenticated(self) -> None:
         request_id = "login-request-1"
         channel = _channel(self.target, request_id)
         try:
@@ -76,7 +93,7 @@ class ChatGrpcSkeletonTests(unittest.TestCase):
                 )
         finally:
             channel.close()
-        self.assertEqual(captured.exception.code(), grpc.StatusCode.UNIMPLEMENTED)
+        self.assertEqual(captured.exception.code(), grpc.StatusCode.UNAUTHENTICATED)
 
     def test_invalid_login_returns_invalid_argument(self) -> None:
         request_id = "invalid-login-1"
@@ -98,7 +115,19 @@ class ChatGrpcSkeletonTests(unittest.TestCase):
 
     def test_subscription_emits_keepalive_and_accepts_cancellation(self) -> None:
         request_id = "stream-request-1"
-        channel = _channel(self.target, request_id)
+        login_channel = _channel(self.target, "stream-login")
+        try:
+            login = auth_pb2_grpc.AuthServiceStub(login_channel).Login(
+                auth_pb2.LoginRequest(
+                    context=common_pb2.RequestContext(request_id="stream-login"),
+                    username="smoke-user",
+                    password="smoke-password-123",
+                ),
+                timeout=2,
+            )
+        finally:
+            login_channel.close()
+        channel = _channel(self.target, request_id, login.token)
         try:
             call = chat_pb2_grpc.ChatServiceStub(channel).SubscribeEvents(
                 chat_pb2.SubscribeEventsRequest(
@@ -116,9 +145,14 @@ class ChatGrpcSkeletonTests(unittest.TestCase):
             channel.close()
 
     def test_smoke_client_covers_acceptance_path(self) -> None:
-        result = run_smoke_test(target=self.target, timeout_seconds=2)
+        result = run_smoke_test(
+            target=self.target,
+            timeout_seconds=2,
+            username="smoke-user",
+            password="smoke-password-123",
+        )
         self.assertTrue(result.health_serving)
-        self.assertEqual(result.login_status, "UNIMPLEMENTED")
+        self.assertEqual(result.login_status, "OK")
         self.assertEqual(result.stream_event_type, "CHAT_EVENT_TYPE_KEEPALIVE")
         self.assertTrue(result.stream_cancelled)
 
@@ -164,4 +198,3 @@ class LlmGrpcSkeletonTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

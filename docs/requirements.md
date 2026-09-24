@@ -84,6 +84,10 @@ Phase 0 defines these boundaries but does not create a schema or store data.
 Phase 1 provides client/server metadata interceptors. Business-level duplicate
 detection is still deferred until the applicable feature phase.
 
+Phase 2 validates bearer tokens against persisted sessions. Tokens are revoked
+on logout and when an administrator disables a user, and expired tokens are
+rejected.
+
 ## Timestamp convention
 
 - Persisted and transmitted timestamps represent UTC instants.

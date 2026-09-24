@@ -6,6 +6,22 @@ from typing import NoReturn
 
 import grpc
 
+from common.errors import ApplicationError, ErrorCode
+
+
+_GRPC_STATUS_BY_ERROR = {
+    ErrorCode.INVALID_ARGUMENT: grpc.StatusCode.INVALID_ARGUMENT,
+    ErrorCode.UNAUTHENTICATED: grpc.StatusCode.UNAUTHENTICATED,
+    ErrorCode.PERMISSION_DENIED: grpc.StatusCode.PERMISSION_DENIED,
+    ErrorCode.NOT_FOUND: grpc.StatusCode.NOT_FOUND,
+    ErrorCode.ALREADY_EXISTS: grpc.StatusCode.ALREADY_EXISTS,
+    ErrorCode.CONFLICT: grpc.StatusCode.FAILED_PRECONDITION,
+    ErrorCode.DEADLINE_EXCEEDED: grpc.StatusCode.DEADLINE_EXCEEDED,
+    ErrorCode.UNAVAILABLE: grpc.StatusCode.UNAVAILABLE,
+    ErrorCode.NOT_IMPLEMENTED: grpc.StatusCode.UNIMPLEMENTED,
+    ErrorCode.INTERNAL: grpc.StatusCode.INTERNAL,
+}
+
 
 def abort_invalid(
     context: grpc.ServicerContext, request_id: str, message: str
@@ -34,5 +50,13 @@ def abort_unimplemented(
     context.set_trailing_metadata((("x-request-id", request_id),))
     context.abort(
         grpc.StatusCode.UNIMPLEMENTED,
-        f"{operation} is defined but not implemented in Phase 1",
+        f"{operation} is defined but not implemented in the current phase",
     )
+
+
+def abort_application_error(
+    context: grpc.ServicerContext, error: ApplicationError, fallback_request_id: str
+) -> NoReturn:
+    request_id = error.request_id or fallback_request_id
+    context.set_trailing_metadata((("x-request-id", request_id),))
+    context.abort(_GRPC_STATUS_BY_ERROR[error.code], error.message)

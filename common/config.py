@@ -7,8 +7,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping
 
+from dotenv import load_dotenv
+
 
 SUPPORTED_LOG_LEVELS = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
+DEFAULT_ENV_FILE = Path(__file__).resolve().parents[1] / ".env"
 
 
 class ConfigurationError(ValueError):
@@ -37,6 +40,7 @@ class Settings:
     rpc_timeout_seconds: float
     stream_keepalive_seconds: float
     shutdown_grace_seconds: float
+    session_ttl_seconds: int
     chat_node_id: str
     chat_endpoint: ServiceEndpoint
     chat_database_path: Path
@@ -86,9 +90,19 @@ def _positive_float(source: Mapping[str, str], key: str, default: float) -> floa
 
 
 def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
-    """Load settings from a supplied mapping or the process environment."""
+    """Load settings from a supplied mapping or the local runtime environment.
 
-    source = os.environ if environ is None else environ
+    Normal application startup reads the repository-root ``.env`` file first.
+    Existing process environment variables win over values in that file.
+    Supplying ``environ`` bypasses ``.env`` loading, which keeps tests and
+    programmatic callers deterministic.
+    """
+
+    if environ is None:
+        load_dotenv(dotenv_path=DEFAULT_ENV_FILE, override=False)
+        source: Mapping[str, str] = os.environ
+    else:
+        source = environ
     log_level = _required_text(source, "LOG_LEVEL", "INFO").upper()
     if log_level not in SUPPORTED_LOG_LEVELS:
         choices = ", ".join(sorted(SUPPORTED_LOG_LEVELS))
@@ -105,6 +119,7 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
         shutdown_grace_seconds=_positive_float(
             source, "SHUTDOWN_GRACE_SECONDS", 5.0
         ),
+        session_ttl_seconds=_positive_int(source, "SESSION_TTL_SECONDS", 3600),
         chat_node_id=_required_text(source, "CHAT_NODE_ID", "chat-node-1"),
         chat_endpoint=ServiceEndpoint(
             host=_required_text(source, "CHAT_HOST", "127.0.0.1"),

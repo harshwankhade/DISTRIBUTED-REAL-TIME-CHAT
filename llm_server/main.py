@@ -16,6 +16,10 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="bind, print service identity, then stop instead of waiting",
     )
+    parser.add_argument(
+        "--bind",
+        help="override the configured bind address (use 127.0.0.1:0 for tests)",
+    )
     return parser
 
 
@@ -30,7 +34,9 @@ def main(argv: list[str] | None = None) -> int:
         node_id=settings.llm_node_id,
         level=settings.log_level,
     )
-    server, bound_address = create_llm_server(settings, logger=logger)
+    server, bound_address = create_llm_server(
+        settings, bind_address=args.bind, logger=logger
+    )
     server.start()
     logger.info(
         "service_started",

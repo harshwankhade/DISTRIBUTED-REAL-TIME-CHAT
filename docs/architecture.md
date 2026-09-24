@@ -1,78 +1,91 @@
-# Architecture - Phase 1 Baseline
+# Architecture - Phase 2 Baseline
 
 ## Current executable architecture
 
 ```text
-client smoke CLI
-    |
-    | insecure local gRPC (Phase 1 transport only)
-    v
-chat gRPC skeleton                         independent LLM gRPC skeleton
-  Health / Auth / Channel / Chat             Health / LLM
-  Presence / File / Admin
-    |
-    `-- repository ports only; no adapter or database schema yet
+client / tests
+      |
+      | gRPC + request ID + bearer token
+      v
+chat transport services
+  Auth / Channel / Admin       Chat / Presence / File skeletons
+      |                              (authentication only)
+      v
+application services
+  authentication / sessions / authorization / channel rules
+      |
+      v
+unit of work + repositories
+      |
+      v
+per-server SQLite database
+
+independent LLM gRPC skeleton (no model behavior yet)
 ```
 
-The chat and LLM servers are separate processes with separate configured
-addresses. This preserves the final service boundary without adding any model
-runtime or business logic in Phase 1.
+## Layer responsibilities
 
-## Layering
+- **gRPC layer:** validates wire-level required fields, reads metadata, invokes
+  application services, and maps safe application errors to gRPC statuses.
+- **Application layer:** owns authentication, permissions, token lifecycle,
+  channel rules, and transaction-sized operations. It does not import protobuf.
+- **Repository layer:** owns SQL and maps rows to domain objects.
+- **Database layer:** creates connections and applies ordered migrations once.
+- **Security layer:** owns password and session-token primitives.
 
-```text
-generated protobuf/gRPC bindings
-        |
-typed transport service skeletons
-        |
-application/business logic (not implemented yet)
-        |
-repository + unit-of-work ports
-        |
-SQLite adapter (Phase 2)
-```
+This separation prevents gRPC handlers from becoming the persistence model and
+allows future committed commands to invoke application/repository behavior
+without changing client contracts.
 
-Generated files contain transport types only. Service skeletons validate basic
-wire input and return clear gRPC statuses. They do not access domain models or
-repositories, which prevents accidental Phase 2 implementation.
+## Persistence and transactions
 
-## Metadata flow
+Each chat server uses its own configured SQLite file. Every application
+operation opens one connection and transaction through `SQLiteUnitOfWork`.
+Writes explicitly commit; exceptions and uncommitted operations roll back.
+Foreign keys, busy timeout, and WAL mode are enabled on file databases.
 
-The client interceptor attaches `x-request-id` and an optional bearer token.
-The server interceptor extracts them for the lifetime of each unary or streaming
-handler through context-local variables. Logs include the request ID, RPC method,
-and a token-present boolean; token values are never logged.
+`001_initial.sql` creates users, sessions, channels, memberships, indexes, and
+the migration record. Migration application is repeatable. A shared SQLite file
+between future Raft nodes is explicitly not the replication design.
 
-Request messages also contain `RequestContext`. Keeping a request ID in the
-schema makes tracing explicit across queued or forwarded work later, while the
-transport copy makes it available before message-specific business handling.
+## Authentication model
 
-## Streaming and cancellation
+Passwords use salted `scrypt` with versioned parameters stored in the encoded
+hash. Login performs a dummy hash check for unknown users to reduce obvious
+username timing differences.
 
-The event subscription is a real server-streaming RPC. Phase 1 emits only typed
-keepalive events so clients can verify that the connection remains active and
-can be cancelled cleanly. This is a transport guarantee, not reliable message
-delivery, presence publication, replay, or ordering.
+Successful login returns a random opaque token. Only a SHA-256 digest is stored.
+The request interceptor extracts `authorization: Bearer <token>` without logging
+the token. Application authentication verifies that the session exists, is not
+revoked or expired, and belongs to an active user.
 
-File RPCs use streaming contracts to avoid requiring whole files in memory.
-Actual storage, size/type validation, checksums, interruption cleanup, and
-authorization remain Phase 3 work.
+Disabling a user revokes all current sessions in the same transaction. Logout
+revokes the current session. There is no refresh-token flow.
 
-## Configuration and process lifecycle
+## Authorization and channel rules
 
-Hosts, ports, worker count, deadlines, keepalive interval, and shutdown grace
-come from validated environment settings. Both servers bind their configured
-gRPC address, log identity, and stop gracefully on `Ctrl+C`. Tests bind ephemeral
-ports to avoid machine-specific port conflicts.
+- Admin RPCs require an authenticated active administrator.
+- Creating channels through `ChannelService` is also administrator-only.
+- Active normal users can list active channels and self-join them.
+- Leaving requires existing membership.
+- Admins can view archived channels and manage members of active channels.
+- Archived channels reject joins and membership changes.
 
-## Future compatibility boundaries
+The current public-channel assumption avoids inventing a private-channel model
+before it is requested.
 
-- v1 client contracts do not depend on SQLite or Raft.
-- `client_request_id` is present where later idempotency is required.
-- LLM calls stay outside the chat process and future Raft state-machine apply.
-- File contents use streams and remain separate from future replicated metadata.
-- UTC protobuf timestamps avoid environment-local time ambiguity.
+## Future Raft compatibility
 
-These seams do not claim any persistence, idempotency, authentication,
-replication, consensus, failover, or recovery behavior today.
+Durable write inputs are represented by immutable command objects containing
+IDs and timestamps generated before persistence. This prepares a clean command
+boundary for later deterministic replication. These commands are currently
+executed in one local SQLite transaction only; there is no log, leader,
+replication, majority acknowledgement, or failover.
+
+## Concurrency and failures
+
+gRPC worker threads use separate SQLite connections and transactions. SQLite's
+locking plus busy timeout protects local concurrent access. Requests can still
+fail with normal gRPC/database errors; distributed retries and duplicate-request
+handling belong to later phases.
 

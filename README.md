@@ -1,19 +1,22 @@
 # Distributed Real-time Chat and Collaboration Tool
 
-This Python project is built one approved phase at a time for a distributed
-systems course. Phase 1 provides stable Protocol Buffer contracts and runnable
-gRPC transport skeletons. It does **not** provide chat business behavior yet.
+This Python/gRPC project is built one approved phase at a time for a distributed
+systems course. Phase 2 provides the single-chat-server access-control
+foundation: users, secure passwords, expiring sessions, channels, memberships,
+administrator operations, and SQLite persistence.
 
 ## Current status
 
 - Completed: Phase 0 - requirements and repository scaffold
-- Completed: Phase 1 - protobuf contracts and gRPC skeleton
-- Next, only when explicitly requested: Phase 2 - users, sessions, channels,
-  administration, SQLite schema, and repositories
-- Not implemented: real authentication, persistent channels/messages/files,
-  presence state, LLM inference, Raft, replication, or fault tolerance
+- Completed: Phase 1 - protobuf contracts and gRPC skeletons
+- Completed: Phase 2 - users, sessions, channels, and administration
+- Next only when explicitly requested: Phase 3 - messaging, presence, and files
+- Not implemented: messages/history, live presence, file storage, LLM behavior,
+  idempotent requests, Raft, replication, failover, or recovery
 
-## Requirements and setup
+## Setup
+
+Requirements:
 
 - Python 3.11 or newer
 - Windows command shell for convenience scripts
@@ -26,117 +29,114 @@ python -m venv .venv
 .\scripts\generate_stubs.cmd
 ```
 
-The generated bindings are checked into `proto/chat/v1` so a fresh evaluator
-can run the system immediately after installing requirements. Regenerate them
-whenever a `.proto` source changes.
-
-## Repository layout
-
-```text
-.
-|-- client/                 # Identity command and gRPC smoke client
-|-- common/                 # Configuration, JSON logs, IDs, interceptors
-|-- docs/                   # Requirements, architecture, API and phase reports
-|-- domain/                 # Initial data-only domain models
-|-- llm_server/             # Independent LLM gRPC skeleton
-|-- proto/chat/v1/          # Versioned .proto sources and generated bindings
-|-- scripts/                # Stub generation and process launchers
-|-- server/                 # Chat-side gRPC skeletons and repository ports
-|-- tests/                  # Unit, contract and gRPC integration tests
-|-- .env.example            # Environment-variable reference
-`-- requirements.txt        # Reproducible Phase 1 dependencies
-```
-
-There is intentionally no `raft/` directory before Phase 5.
-
-## Version 1 gRPC surface
-
-| Service | Phase 1 RPCs |
-|---|---|
-| `HealthService` | `Check` |
-| `AuthService` | `Login`, `Logout` |
-| `ChannelService` | create, list, join, leave |
-| `ChatService` | send, history, server-streamed events |
-| `PresenceService` | heartbeat, lookup, server-streamed events |
-| `FileService` | client-streamed upload, server-streamed download |
-| `AdminService` | user status/role and channel/member management |
-| `LLMService` | smart reply, summary, suggestion |
-
-Only health checks and chat-stream keepalives succeed in Phase 1. Valid calls
-to feature RPCs return gRPC `UNIMPLEMENTED`; malformed requests return a defined
-status such as `INVALID_ARGUMENT`.
-
 ## Configuration
 
-Settings come from environment variables and are listed in `.env.example`.
-Important Phase 1 values include `CHAT_HOST`, `CHAT_PORT`, `LLM_HOST`,
-`LLM_PORT`, `GRPC_WORKERS`, `RPC_TIMEOUT_SECONDS`,
-`STREAM_KEEPALIVE_SECONDS`, and `SHUTDOWN_GRACE_SECONDS`.
-
-`.env.example` is a reference, not an automatically loaded file. Example:
+Copy the example file once and edit `.env` with your local values:
 
 ```powershell
-$env:CHAT_PORT = "51051"
-$env:LOG_LEVEL = "DEBUG"
+Copy-Item .env.example .env
 ```
 
-## Run and smoke-test the services
+The processes automatically load `.env` from the repository root. Variables
+already set in the process environment take precedence, which allows deployment
+or one-off overrides without editing the file. `.env` is ignored by Git; do not
+commit it. Important Phase 2 settings are:
 
-Start the chat skeleton in terminal 1:
+- `CHAT_DATABASE_PATH` - this server's SQLite database file
+- `SESSION_TTL_SECONDS` - login-token lifetime
+- `CHAT_HOST` and `CHAT_PORT` - chat gRPC listen address
+- `GRPC_WORKERS`, `RPC_TIMEOUT_SECONDS`, and `SHUTDOWN_GRACE_SECONDS`
+
+The example contains no credentials. Put local-only seed and smoke-test
+passwords in `.env`, and do not reuse real account passwords.
+
+## Migrate and seed the database
+
+Apply migrations:
+
+```powershell
+.\scripts\migrate.cmd
+```
+
+For a non-interactive local seed, fill `SEED_ADMIN_PASSWORD` and
+`SEED_SAMPLE_PASSWORD` in `.env`, then run:
+
+```powershell
+.\scripts\seed_data.cmd
+```
+
+The default identities are one `admin` user and sample users `alice` and `bob`.
+If password variables are absent, the command prompts without echoing input.
+Running the command again skips existing users rather than duplicating them.
+
+## Run the system
+
+Start the chat server:
 
 ```powershell
 .\scripts\start_chat.cmd
 ```
 
-Start the independent LLM skeleton in terminal 2:
+The independent LLM server remains a Phase 1 skeleton and may be started
+separately when needed:
 
 ```powershell
 .\scripts\start_llm.cmd
 ```
 
-Run the acceptance smoke client in terminal 3:
+To run the transport smoke client against a seeded account:
 
 ```powershell
 .\scripts\start_client.cmd --smoke
 ```
 
-The smoke client checks that chat health is serving, a valid login skeleton
-returns `UNIMPLEMENTED`, the event subscription receives a transport keepalive,
-and stream cancellation succeeds. Stop servers with `Ctrl+C`.
+Set `SMOKE_USERNAME` and `SMOKE_PASSWORD` in `.env` first. For `alice`, use the
+same value as `SEED_SAMPLE_PASSWORD`.
 
-One-shot startup checks are also available:
+The smoke test performs health, real login, authenticated event-stream
+keepalive, and stream cancellation. Stop servers with `Ctrl+C`.
 
-```powershell
-.\scripts\start_chat.cmd --once
-.\scripts\start_llm.cmd --once
-.\scripts\start_client.cmd --once
-```
+## Implemented Phase 2 behavior
 
-## Run tests
+- Passwords are salted and hashed with `scrypt`; plaintext passwords are never
+  stored.
+- Session tokens are generated with `secrets`, returned once, and stored only as
+  SHA-256 hashes.
+- Sessions expire, can be logged out, and are revoked when a user is disabled.
+- Admins can create users, enable/disable users, change roles, create/archive
+  channels, and add/remove channel members.
+- Active users can list channels, join active channels, and leave channels they
+  belong to.
+- Normal users cannot call administrator RPCs.
+- Archived channels reject joins and membership changes.
+- SQLite migrations and transactions preserve state across process restarts.
+- Protected future chat/presence/file skeletons authenticate before returning
+  `UNIMPLEMENTED`.
+
+Current assumption: every non-archived channel is discoverable and self-joinable
+by active users. Private/invite-only channels have not been requested.
+
+## Tests
 
 ```powershell
 .venv\Scripts\python -m compileall -q common domain proto server llm_server client tests scripts
 .venv\Scripts\python -m unittest discover -s tests -v
+.venv\Scripts\python -m pip check
 ```
 
-## Metadata and deadlines
+Tests use temporary databases and ephemeral ports. They do not modify the
+configured development database.
 
-- Clients send `x-request-id` metadata; the shared client interceptor can create
-  it and the server interceptor extracts it for logging and handlers.
-- Optional bearer tokens use `authorization: Bearer <token>`. Phase 1 extracts
-  but does not validate tokens.
-- Request messages also contain a `RequestContext`; state-changing contracts
-  reserve `client_request_id` for later idempotency.
-- Clients apply explicit RPC deadlines. Services preserve request IDs in status
-  messages or trailing metadata.
+## Important documentation
 
-See [API contracts](docs/api_contracts.md),
-[architecture](docs/architecture.md), and the
-[Phase 1 report](docs/phases/phase_1_report.md) for details.
+- [Current architecture](docs/architecture.md)
+- [v1 API contracts](docs/api_contracts.md)
+- [Phase 2 report](docs/phases/phase_2_report.md)
+- [Requirements and permissions](docs/requirements.md)
 
-## Phase 1 limitations
+## Security and distributed-systems limitations
 
-No credentials are checked, no token is issued, and nothing is persisted.
-Streaming keepalives only verify transport and cancellation. File bytes are not
-accepted, LLM answers are not generated, and there is no Raft behavior.
-
+Local gRPC connections are currently plaintext. There is no password-reset or
+token-refresh flow, rate limiting, audit-event persistence, message behavior,
+LLM behavior, or Raft. SQLite is local to one chat server and must never be
+mistaken for replicated state or consensus.

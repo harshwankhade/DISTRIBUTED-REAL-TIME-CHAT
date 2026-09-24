@@ -37,8 +37,10 @@ def _intercepted_channel(
     )
 
 
-def run_smoke_test(*, target: str, timeout_seconds: float) -> SmokeResult:
-    """Exercise health, a NOT_IMPLEMENTED login, and stream cancellation."""
+def run_smoke_test(
+    *, target: str, timeout_seconds: float, username: str, password: str
+) -> SmokeResult:
+    """Exercise health, login, authenticated streaming, and cancellation."""
 
     base_channel = grpc.insecure_channel(target)
     try:
@@ -58,22 +60,21 @@ def run_smoke_test(*, target: str, timeout_seconds: float) -> SmokeResult:
         auth_stub = auth_pb2_grpc.AuthServiceStub(
             _intercepted_channel(base_channel, request_id=login_request_id)
         )
-        login_status = "unexpected-success"
-        try:
-            auth_stub.Login(
-                auth_pb2.LoginRequest(
-                    context=common_pb2.RequestContext(request_id=login_request_id),
-                    username="phase1-smoke",
-                    password="not-a-real-credential",
-                ),
-                timeout=timeout_seconds,
-            )
-        except grpc.RpcError as exc:
-            login_status = exc.code().name
+        login = auth_stub.Login(
+            auth_pb2.LoginRequest(
+                context=common_pb2.RequestContext(request_id=login_request_id),
+                username=username,
+                password=password,
+            ),
+            timeout=timeout_seconds,
+        )
+        login_status = "OK"
 
         stream_request_id = new_request_id()
         chat_stub = chat_pb2_grpc.ChatServiceStub(
-            _intercepted_channel(base_channel, request_id=stream_request_id)
+            _intercepted_channel(
+                base_channel, request_id=stream_request_id, token=login.token
+            )
         )
         stream = chat_stub.SubscribeEvents(
             chat_pb2.SubscribeEventsRequest(
@@ -94,4 +95,3 @@ def run_smoke_test(*, target: str, timeout_seconds: float) -> SmokeResult:
         )
     finally:
         base_channel.close()
-

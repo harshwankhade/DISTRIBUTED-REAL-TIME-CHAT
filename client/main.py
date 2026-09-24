@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 
 from common.config import ConfigurationError, load_settings
 from common.logging import configure_logging
@@ -42,14 +43,22 @@ def main(argv: list[str] | None = None) -> int:
     )
     target = args.target or settings.chat_endpoint.address
     if args.smoke:
+        username = os.environ.get("SMOKE_USERNAME", "").strip()
+        password = os.environ.get("SMOKE_PASSWORD", "")
+        if not username or not password:
+            raise SystemExit(
+                "SMOKE_USERNAME and SMOKE_PASSWORD are required for --smoke"
+            )
         result = run_smoke_test(
             target=target,
             timeout_seconds=settings.rpc_timeout_seconds,
+            username=username,
+            password=password,
         )
         logger.info(
             "smoke_test_completed",
             extra={
-                "phase": 1,
+                "phase": 2,
                 "target": target,
                 "health_serving": result.health_serving,
                 "health_request_id": result.health_request_id,
@@ -60,7 +69,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         passed = (
             result.health_serving
-            and result.login_status == "UNIMPLEMENTED"
+            and result.login_status == "OK"
             and result.stream_event_type == "CHAT_EVENT_TYPE_KEEPALIVE"
             and result.stream_cancelled
         )
@@ -72,7 +81,7 @@ def main(argv: list[str] | None = None) -> int:
         node_id=settings.client_id,
         address=target,
         once=True,
-        phase=1,
+        phase=2,
     )
     return 0
 
