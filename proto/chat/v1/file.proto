@@ -1,0 +1,45 @@
+syntax = "proto3";
+
+package distributed_chat.v1;
+
+import "proto/chat/v1/common.proto";
+
+service FileService {
+  rpc UploadFile(stream UploadFileRequest) returns (UploadFileResponse);
+  rpc DownloadFile(DownloadFileRequest) returns (stream DownloadFileResponse);
+}
+
+message UploadFileHeader {
+  RequestContext context = 1;
+  string channel_id = 2;
+  string message_id = 3;
+  string original_name = 4;
+  string content_type = 5;
+  int64 expected_size_bytes = 6;
+  string expected_checksum_sha256 = 7;
+}
+
+message UploadFileRequest {
+  oneof payload {
+    UploadFileHeader header = 1;
+    bytes chunk = 2;
+  }
+}
+
+message UploadFileResponse {
+  ResponseStatus status = 1;
+  FileMetadataView file = 2;
+}
+
+message DownloadFileRequest {
+  RequestContext context = 1;
+  string file_id = 2;
+}
+
+message DownloadFileResponse {
+  oneof payload {
+    FileMetadataView metadata = 1;
+    bytes chunk = 2;
+  }
+}
+

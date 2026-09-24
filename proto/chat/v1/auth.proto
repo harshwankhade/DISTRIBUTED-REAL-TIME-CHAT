@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package distributed_chat.v1;
+
+import "google/protobuf/timestamp.proto";
+import "proto/chat/v1/common.proto";
+
+service AuthService {
+  rpc Login(LoginRequest) returns (LoginResponse);
+  rpc Logout(LogoutRequest) returns (EmptyResponse);
+}
+
+message LoginRequest {
+  RequestContext context = 1;
+  string username = 2;
+  string password = 3;
+}
+
+message LoginResponse {
+  ResponseStatus status = 1;
+  string token = 2;
+  google.protobuf.Timestamp expires_at = 3;
+}
+
+message LogoutRequest {
+  RequestContext context = 1;
+}
+

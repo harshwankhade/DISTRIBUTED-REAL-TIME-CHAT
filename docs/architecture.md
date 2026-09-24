@@ -1,92 +1,78 @@
-# Architecture - Phase 0 Baseline
+# Architecture - Phase 1 Baseline
 
-## Current executable shape
-
-Phase 0 establishes three independently runnable Python processes:
+## Current executable architecture
 
 ```text
-client placeholder
-    (no RPC yet)
-chat-server placeholder ---- future gRPC ---- LLM-server placeholder
+client smoke CLI
     |
-    `---- future repository adapter ---- per-server SQLite
+    | insecure local gRPC (Phase 1 transport only)
+    v
+chat gRPC skeleton                         independent LLM gRPC skeleton
+  Health / Auth / Channel / Chat             Health / LLM
+  Presence / File / Admin
+    |
+    `-- repository ports only; no adapter or database schema yet
 ```
 
-Each process loads centralized environment configuration and emits JSON logs
-containing service and node identity. The two server placeholders then wait for
-shutdown. They do not bind a port, exchange data, or claim network availability.
+The chat and LLM servers are separate processes with separate configured
+addresses. This preserves the final service boundary without adding any model
+runtime or business logic in Phase 1.
 
-## Target process boundaries
-
-- **Client:** user interaction, subscriptions, uploads/downloads, and concurrent
-  test clients. It never accesses the database directly.
-- **Chat application server:** authentication, authorization, business rules,
-  persistence coordination, and future Raft command submission.
-- **LLM server:** independent inference endpoint. It receives bounded authorized
-  context through gRPC and cannot directly mutate chat state.
-- **SQLite adapter:** Milestone 1 local persistence behind repository and
-  unit-of-work interfaces.
-- **Raft module:** absent until Phase 5. It will later order deterministic durable
-  commands without changing client-facing contracts.
-
-## Layering decisions
+## Layering
 
 ```text
-transport (future gRPC services)
+generated protobuf/gRPC bindings
         |
-application/business logic (future phases)
+typed transport service skeletons
+        |
+application/business logic (not implemented yet)
         |
 repository + unit-of-work ports
         |
 SQLite adapter (Phase 2)
 ```
 
-Transport, business rules, and persistence are kept separate. The repository
-interfaces are intentionally small in Phase 0; domain-specific query methods
-will be added only when a phase proves they are necessary.
+Generated files contain transport types only. Service skeletons validate basic
+wire input and return clear gRPC statuses. They do not access domain models or
+repositories, which prevents accidental Phase 2 implementation.
 
-## Initial domain vocabulary
+## Metadata flow
 
-`domain.models` contains immutable, data-only models for `User`, `Session`,
-`Channel`, `ChannelMember`, `Message`, `FileMetadata`, `Presence`,
-`ConversationContext`, and `AuditEvent`. They validate basic identity and UTC
-timestamp invariants but contain no business workflows.
+The client interceptor attaches `x-request-id` and an optional bearer token.
+The server interceptor extracts them for the lifetime of each unary or streaming
+handler through context-local variables. Logs include the request ID, RPC method,
+and a token-present boolean; token values are never logged.
 
-`RaftLogEntry` and `NodeState` are intentionally not present because Raft belongs
-to Milestone 2.
+Request messages also contain `RequestContext`. Keeping a request ID in the
+schema makes tracing explicit across queued or forwarded work later, while the
+transport copy makes it available before message-specific business handling.
 
-## Persistence decision
+## Streaming and cancellation
 
-SQLite is selected for the single-server Milestone 1 implementation because it
-is built into Python, transactional, easy to reset for a classroom demo, and
-requires no external database service. Each chat server will own a separate
-database file. A shared SQLite file across nodes is not an acceptable substitute
-for Raft replication.
+The event subscription is a real server-streaming RPC. Phase 1 emits only typed
+keepalive events so clients can verify that the connection remains active and
+can be cancelled cleanly. This is a transport guarantee, not reliable message
+delivery, presence publication, replay, or ordering.
 
-The tradeoff is limited multi-process write scalability. That is acceptable for
-Milestone 1 and the repository boundary prevents SQLite-specific details from
-leaking into RPC contracts or business rules.
+File RPCs use streaming contracts to avoid requiring whole files in memory.
+Actual storage, size/type validation, checksums, interruption cleanup, and
+authorization remain Phase 3 work.
 
-## Configuration and observability
+## Configuration and process lifecycle
 
-All environment-specific values are loaded once through `common.config`.
-Settings validate ports, log levels, and required identity text. Defaults are
-local-development values, not business-logic constants.
+Hosts, ports, worker count, deadlines, keepalive interval, and shutdown grace
+come from validated environment settings. Both servers bind their configured
+gRPC address, log identity, and stop gracefully on `Ctrl+C`. Tests bind ephemeral
+ports to avoid machine-specific port conflicts.
 
-All processes use one-line JSON logs. Stable fields include UTC timestamp,
-severity, logger, event, service, and node ID. Future phases may add request ID,
-user/channel identifiers when safe, and Raft term/role only after Raft exists.
+## Future compatibility boundaries
 
-## Future compatibility without premature implementation
+- v1 client contracts do not depend on SQLite or Raft.
+- `client_request_id` is present where later idempotency is required.
+- LLM calls stay outside the chat process and future Raft state-machine apply.
+- File contents use streams and remain separate from future replicated metadata.
+- UTC protobuf timestamps avoid environment-local time ambiguity.
 
-- Message models already distinguish `client_request_id` from server message ID.
-- Repository transactions can later sit behind deterministic application
-  commands and Raft apply order.
-- File metadata separates byte storage from durable references.
-- Conversation context records the requester and channel boundary needed for
-  later privacy filtering.
-- Ports and node identities can differ per process/node without code changes.
-
-These are compatibility seams only. Phase 0 implements no idempotency store,
-message command, file transfer, context builder, or consensus behavior.
+These seams do not claim any persistence, idempotency, authentication,
+replication, consensus, failover, or recovery behavior today.
 

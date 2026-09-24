@@ -34,6 +34,8 @@ class PlaceholderProcessTests(unittest.TestCase):
                 self.assertEqual(payload["service_name"], service)
                 self.assertEqual(payload["service_node_id"], node_id)
                 self.assertTrue(payload["placeholder"])
+                self.assertTrue(payload["skeleton"])
+                self.assertEqual(payload["phase"], 1)
 
 
 if __name__ == "__main__":

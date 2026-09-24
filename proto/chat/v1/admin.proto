@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+package distributed_chat.v1;
+
+import "proto/chat/v1/common.proto";
+import "proto/chat/v1/channel.proto";
+
+service AdminService {
+  rpc CreateUser(CreateUserRequest) returns (UserResponse);
+  rpc SetUserStatus(SetUserStatusRequest) returns (UserResponse);
+  rpc SetUserRole(SetUserRoleRequest) returns (UserResponse);
+  rpc ArchiveChannel(ArchiveChannelRequest) returns (ChannelResponse);
+  rpc ManageChannelMember(ManageChannelMemberRequest) returns (EmptyResponse);
+}
+
+message CreateUserRequest {
+  RequestContext context = 1;
+  string username = 2;
+  string password = 3;
+  string role = 4;
+}
+
+message UserResponse {
+  ResponseStatus status = 1;
+  UserSummary user = 2;
+}
+
+message SetUserStatusRequest {
+  RequestContext context = 1;
+  string user_id = 2;
+  string status = 3;
+}
+
+message SetUserRoleRequest {
+  RequestContext context = 1;
+  string user_id = 2;
+  string role = 3;
+}
+
+message ArchiveChannelRequest {
+  RequestContext context = 1;
+  string channel_id = 2;
+}
+
+message ManageChannelMemberRequest {
+  RequestContext context = 1;
+  string channel_id = 2;
+  string user_id = 3;
+  bool add = 4;
+}

@@ -1,4 +1,4 @@
-"""Runtime helpers for Phase 0 placeholder processes."""
+"""Runtime helpers for executable placeholder processes."""
 
 from __future__ import annotations
 
@@ -13,13 +13,15 @@ def announce_placeholder(
     node_id: str,
     address: str | None,
     once: bool,
+    phase: int = 1,
 ) -> None:
     """Announce process identity and optionally wait until interrupted."""
 
     logger.info(
         "service_started",
         extra={
-            "phase": 0,
+            "phase": phase,
+            "skeleton": True,
             "placeholder": True,
             "service_name": service,
             "service_node_id": node_id,
@@ -31,11 +33,10 @@ def announce_placeholder(
 
     logger.info(
         "placeholder_waiting",
-        extra={"detail": "No network service is implemented in Phase 0"},
+        extra={"detail": "No feature behavior is implemented by this placeholder"},
     )
     try:
         while True:
             time.sleep(1)
     except KeyboardInterrupt:
         logger.info("service_stopped", extra={"reason": "keyboard_interrupt"})
-

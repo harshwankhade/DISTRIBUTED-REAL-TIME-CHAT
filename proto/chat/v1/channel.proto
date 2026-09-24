@@ -1,0 +1,40 @@
+syntax = "proto3";
+
+package distributed_chat.v1;
+
+import "proto/chat/v1/common.proto";
+
+service ChannelService {
+  rpc CreateChannel(CreateChannelRequest) returns (ChannelResponse);
+  rpc ListChannels(ListChannelsRequest) returns (ListChannelsResponse);
+  rpc JoinChannel(ChannelMembershipRequest) returns (EmptyResponse);
+  rpc LeaveChannel(ChannelMembershipRequest) returns (EmptyResponse);
+}
+
+message CreateChannelRequest {
+  RequestContext context = 1;
+  string name = 2;
+}
+
+message ChannelResponse {
+  ResponseStatus status = 1;
+  ChannelSummary channel = 2;
+}
+
+message ListChannelsRequest {
+  RequestContext context = 1;
+  int32 page_size = 2;
+  string page_token = 3;
+}
+
+message ListChannelsResponse {
+  ResponseStatus status = 1;
+  repeated ChannelSummary channels = 2;
+  string next_page_token = 3;
+}
+
+message ChannelMembershipRequest {
+  RequestContext context = 1;
+  string channel_id = 2;
+}
+

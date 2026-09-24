@@ -1,0 +1,2 @@
+"""Distributed chat protocol namespace."""
+

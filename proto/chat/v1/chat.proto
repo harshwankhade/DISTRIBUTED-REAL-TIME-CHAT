@@ -1,0 +1,57 @@
+syntax = "proto3";
+
+package distributed_chat.v1;
+
+import "google/protobuf/timestamp.proto";
+import "proto/chat/v1/common.proto";
+
+service ChatService {
+  rpc SendMessage(SendMessageRequest) returns (SendMessageResponse);
+  rpc GetHistory(GetHistoryRequest) returns (GetHistoryResponse);
+  rpc SubscribeEvents(SubscribeEventsRequest) returns (stream ChatEvent);
+}
+
+message SendMessageRequest {
+  RequestContext context = 1;
+  string channel_id = 2;
+  string body = 3;
+}
+
+message SendMessageResponse {
+  ResponseStatus status = 1;
+  MessageView message = 2;
+}
+
+message GetHistoryRequest {
+  RequestContext context = 1;
+  string channel_id = 2;
+  int32 page_size = 3;
+  string page_token = 4;
+}
+
+message GetHistoryResponse {
+  ResponseStatus status = 1;
+  repeated MessageView messages = 2;
+  string next_page_token = 3;
+}
+
+message SubscribeEventsRequest {
+  RequestContext context = 1;
+  repeated string channel_ids = 2;
+}
+
+enum ChatEventType {
+  CHAT_EVENT_TYPE_UNSPECIFIED = 0;
+  CHAT_EVENT_TYPE_KEEPALIVE = 1;
+  CHAT_EVENT_TYPE_MESSAGE = 2;
+  CHAT_EVENT_TYPE_PRESENCE = 3;
+}
+
+message ChatEvent {
+  string event_id = 1;
+  ChatEventType type = 2;
+  google.protobuf.Timestamp occurred_at = 3;
+  string request_id = 4;
+  MessageView message = 5;
+}
+

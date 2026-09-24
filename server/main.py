@@ -1,4 +1,4 @@
-"""Runnable Phase 0 placeholder for the future chat gRPC server."""
+"""Runnable Phase 1 chat gRPC service skeleton."""
 
 from __future__ import annotations
 
@@ -6,15 +6,15 @@ import argparse
 
 from common.config import ConfigurationError, load_settings
 from common.logging import configure_logging
-from common.runtime import announce_placeholder
+from server.grpc_server import create_chat_server
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Phase 0 chat server placeholder")
+    parser = argparse.ArgumentParser(description="Phase 1 chat gRPC skeleton")
     parser.add_argument(
         "--once",
         action="store_true",
-        help="print service identity and exit instead of waiting",
+        help="bind, print service identity, then stop instead of waiting",
     )
     return parser
 
@@ -30,16 +30,29 @@ def main(argv: list[str] | None = None) -> int:
         node_id=settings.chat_node_id,
         level=settings.log_level,
     )
-    announce_placeholder(
-        logger,
-        service="chat-server",
-        node_id=settings.chat_node_id,
-        address=settings.chat_endpoint.address,
-        once=args.once,
+    server, bound_address = create_chat_server(settings, logger=logger)
+    server.start()
+    logger.info(
+        "service_started",
+        extra={
+            "phase": 1,
+            "skeleton": True,
+            "placeholder": True,
+            "service_name": "chat-server",
+            "service_node_id": settings.chat_node_id,
+            "listen_address": bound_address,
+        },
     )
+    if args.once:
+        server.stop(0).wait()
+        return 0
+    try:
+        server.wait_for_termination()
+    except KeyboardInterrupt:
+        logger.info("service_stopping", extra={"grace_seconds": settings.shutdown_grace_seconds})
+        server.stop(settings.shutdown_grace_seconds).wait()
     return 0
 
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

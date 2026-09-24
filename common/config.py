@@ -33,6 +33,10 @@ class Settings:
 
     app_env: str
     log_level: str
+    grpc_workers: int
+    rpc_timeout_seconds: float
+    stream_keepalive_seconds: float
+    shutdown_grace_seconds: float
     chat_node_id: str
     chat_endpoint: ServiceEndpoint
     chat_database_path: Path
@@ -59,6 +63,28 @@ def _port(source: Mapping[str, str], key: str, default: int) -> int:
     return value
 
 
+def _positive_int(source: Mapping[str, str], key: str, default: int) -> int:
+    raw_value = source.get(key, str(default)).strip()
+    try:
+        value = int(raw_value)
+    except ValueError as exc:
+        raise ConfigurationError(f"{key} must be an integer") from exc
+    if value <= 0:
+        raise ConfigurationError(f"{key} must be greater than zero")
+    return value
+
+
+def _positive_float(source: Mapping[str, str], key: str, default: float) -> float:
+    raw_value = source.get(key, str(default)).strip()
+    try:
+        value = float(raw_value)
+    except ValueError as exc:
+        raise ConfigurationError(f"{key} must be a number") from exc
+    if value <= 0:
+        raise ConfigurationError(f"{key} must be greater than zero")
+    return value
+
+
 def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
     """Load settings from a supplied mapping or the process environment."""
 
@@ -71,6 +97,14 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
     return Settings(
         app_env=_required_text(source, "APP_ENV", "development"),
         log_level=log_level,
+        grpc_workers=_positive_int(source, "GRPC_WORKERS", 10),
+        rpc_timeout_seconds=_positive_float(source, "RPC_TIMEOUT_SECONDS", 5.0),
+        stream_keepalive_seconds=_positive_float(
+            source, "STREAM_KEEPALIVE_SECONDS", 1.0
+        ),
+        shutdown_grace_seconds=_positive_float(
+            source, "SHUTDOWN_GRACE_SECONDS", 5.0
+        ),
         chat_node_id=_required_text(source, "CHAT_NODE_ID", "chat-node-1"),
         chat_endpoint=ServiceEndpoint(
             host=_required_text(source, "CHAT_HOST", "127.0.0.1"),
@@ -86,4 +120,3 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
         ),
         client_id=_required_text(source, "CLIENT_ID", "client-1"),
     )
-

@@ -1,0 +1,48 @@
+syntax = "proto3";
+
+package distributed_chat.v1;
+
+import "google/protobuf/timestamp.proto";
+import "proto/chat/v1/common.proto";
+
+service LLMService {
+  rpc GetSmartReply(SmartReplyRequest) returns (LLMResponse);
+  rpc SummarizeConversation(SummaryRequest) returns (LLMResponse);
+  rpc GetSuggestion(SuggestionRequest) returns (LLMResponse);
+}
+
+message ConversationItem {
+  string message_id = 1;
+  string sender_id = 2;
+  string body = 3;
+  google.protobuf.Timestamp created_at = 4;
+}
+
+message SmartReplyRequest {
+  RequestContext context = 1;
+  string requester_id = 2;
+  string channel_id = 3;
+  repeated ConversationItem authorized_context = 4;
+}
+
+message SummaryRequest {
+  RequestContext context = 1;
+  string requester_id = 2;
+  string channel_id = 3;
+  google.protobuf.Timestamp from_time = 4;
+  google.protobuf.Timestamp to_time = 5;
+  repeated ConversationItem authorized_context = 6;
+}
+
+message SuggestionRequest {
+  RequestContext context = 1;
+  string requester_id = 2;
+  string channel_id = 3;
+  repeated ConversationItem authorized_context = 4;
+}
+
+message LLMResponse {
+  ResponseStatus status = 1;
+  string answer = 2;
+}
+

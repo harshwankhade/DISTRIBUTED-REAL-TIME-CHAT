@@ -81,7 +81,8 @@ Phase 0 defines these boundaries but does not create a schema or store data.
   and later supports idempotency.
 - IDs are strings at service boundaries. Code must not infer ordering from them.
 
-Phase 0 provides an ID helper; metadata extraction belongs to Phase 1.
+Phase 1 provides client/server metadata interceptors. Business-level duplicate
+detection is still deferred until the applicable feature phase.
 
 ## Timestamp convention
 
@@ -93,8 +94,9 @@ Phase 0 provides an ID helper; metadata extraction belongs to Phase 1.
 
 ## Status and error convention
 
-Application failures use a stable safe code and message. Phase 1 will map them
-to the matching gRPC status without exposing stack traces or secrets.
+Application failures use a stable safe code and message. Phase 1 maps transport
+validation and skeleton failures to gRPC statuses without exposing stack traces
+or secrets.
 
 | Application code | Intended meaning |
 |---|---|
@@ -121,4 +123,3 @@ client responses must remain safe and include the request ID.
 - Partial failure of the LLM service must not stop normal chat behavior.
 - Raft behavior, majority commit, failover, and recovery are future work and are
   not simulated in this scaffold.
-

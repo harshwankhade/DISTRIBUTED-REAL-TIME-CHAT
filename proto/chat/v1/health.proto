@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package distributed_chat.v1;
+
+import "proto/chat/v1/common.proto";
+
+service HealthService {
+  rpc Check(HealthCheckRequest) returns (HealthCheckResponse);
+}
+
+message HealthCheckRequest {
+  RequestContext context = 1;
+  string service = 2;
+}
+
+message HealthCheckResponse {
+  ResponseStatus status = 1;
+  string service = 2;
+  string node_id = 3;
+  bool serving = 4;
+  bool auth_metadata_present = 5;
+}

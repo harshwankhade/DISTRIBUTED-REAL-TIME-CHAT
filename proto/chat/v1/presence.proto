@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package distributed_chat.v1;
+
+import "google/protobuf/timestamp.proto";
+import "proto/chat/v1/common.proto";
+
+service PresenceService {
+  rpc Heartbeat(HeartbeatRequest) returns (PresenceResponse);
+  rpc GetPresence(GetPresenceRequest) returns (PresenceResponse);
+  rpc SubscribePresence(SubscribePresenceRequest) returns (stream PresenceEvent);
+}
+
+message HeartbeatRequest {
+  RequestContext context = 1;
+}
+
+message GetPresenceRequest {
+  RequestContext context = 1;
+  string user_id = 2;
+}
+
+message PresenceResponse {
+  ResponseStatus status = 1;
+  string user_id = 2;
+  string presence = 3;
+  google.protobuf.Timestamp last_seen_at = 4;
+}
+
+message SubscribePresenceRequest {
+  RequestContext context = 1;
+  repeated string user_ids = 2;
+}
+
+message PresenceEvent {
+  string event_id = 1;
+  string user_id = 2;
+  string presence = 3;
+  google.protobuf.Timestamp occurred_at = 4;
+}
+

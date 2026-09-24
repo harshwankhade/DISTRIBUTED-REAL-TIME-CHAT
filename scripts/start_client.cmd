@@ -1,8 +1,11 @@
 @echo off
 setlocal
 pushd "%~dp0.."
-python -m client %*
+if exist ".venv\Scripts\python.exe" (
+    .venv\Scripts\python.exe -m client %*
+) else (
+    python -m client %*
+)
 set "task_exit_code=%ERRORLEVEL%"
 popd
 exit /b %task_exit_code%
-

@@ -1,0 +1,60 @@
+syntax = "proto3";
+
+package distributed_chat.v1;
+
+import "google/protobuf/timestamp.proto";
+
+message RequestContext {
+  string request_id = 1;
+  string client_request_id = 2;
+}
+
+enum StatusCode {
+  STATUS_CODE_UNSPECIFIED = 0;
+  STATUS_CODE_OK = 1;
+  STATUS_CODE_NOT_IMPLEMENTED = 2;
+}
+
+message ResponseStatus {
+  StatusCode code = 1;
+  string message = 2;
+  string request_id = 3;
+}
+
+message EmptyResponse {
+  ResponseStatus status = 1;
+}
+
+message UserSummary {
+  string user_id = 1;
+  string username = 2;
+  string role = 3;
+  string status = 4;
+}
+
+message ChannelSummary {
+  string channel_id = 1;
+  string name = 2;
+  bool archived = 3;
+}
+
+message MessageView {
+  string message_id = 1;
+  string channel_id = 2;
+  string sender_id = 3;
+  string body = 4;
+  google.protobuf.Timestamp created_at = 5;
+  string client_request_id = 6;
+}
+
+message FileMetadataView {
+  string file_id = 1;
+  string channel_id = 2;
+  string message_id = 3;
+  string original_name = 4;
+  string content_type = 5;
+  int64 size_bytes = 6;
+  string checksum_sha256 = 7;
+  google.protobuf.Timestamp created_at = 8;
+}
+

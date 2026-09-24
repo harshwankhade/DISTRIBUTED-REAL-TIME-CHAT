@@ -1,117 +1,142 @@
 # Distributed Real-time Chat and Collaboration Tool
 
-This repository is being built one approved phase at a time for a distributed
-systems course project. Phase 0 provides the documented architecture, initial
-domain vocabulary, shared configuration and logging, persistence boundaries,
-and runnable process placeholders. It does **not** provide a chat system yet.
+This Python project is built one approved phase at a time for a distributed
+systems course. Phase 1 provides stable Protocol Buffer contracts and runnable
+gRPC transport skeletons. It does **not** provide chat business behavior yet.
 
 ## Current status
 
 - Completed: Phase 0 - requirements and repository scaffold
-- Next, only when explicitly requested: Phase 1 - protobuf contracts and gRPC
-  service skeletons
-- Not implemented: authentication, channels, messaging, files, presence, LLM
-  inference, networking, replication, Raft, or fault tolerance
+- Completed: Phase 1 - protobuf contracts and gRPC skeleton
+- Next, only when explicitly requested: Phase 2 - users, sessions, channels,
+  administration, SQLite schema, and repositories
+- Not implemented: real authentication, persistent channels/messages/files,
+  presence state, LLM inference, Raft, replication, or fault tolerance
 
-## Requirements
+## Requirements and setup
 
 - Python 3.11 or newer
-- Windows command shell for the convenience launch scripts
+- Windows command shell for convenience scripts
 
-Phase 0 has no third-party Python dependency. `requirements.txt` records that
-decision; gRPC dependencies belong to Phase 1.
+From the repository root:
+
+```powershell
+python -m venv .venv
+.venv\Scripts\python -m pip install -r requirements.txt
+.\scripts\generate_stubs.cmd
+```
+
+The generated bindings are checked into `proto/chat/v1` so a fresh evaluator
+can run the system immediately after installing requirements. Regenerate them
+whenever a `.proto` source changes.
 
 ## Repository layout
 
 ```text
 .
-|-- client/                 # Runnable client placeholder
-|-- common/                 # Configuration, JSON logging, errors, metadata
-|-- docs/
-|   |-- architecture.md     # Process boundaries and future-compatible design
-|   |-- requirements.md     # User stories, permissions, and conventions
-|   `-- phases/
-|       `-- phase_0_report.md
-|-- domain/                 # Data-only initial domain models
-|-- llm_server/             # Runnable independent LLM placeholder
-|-- scripts/                # PowerShell process launchers
-|-- server/
-|   `-- repositories/       # Persistence and transaction interfaces
-|-- tests/                  # Standard-library unit and smoke tests
+|-- client/                 # Identity command and gRPC smoke client
+|-- common/                 # Configuration, JSON logs, IDs, interceptors
+|-- docs/                   # Requirements, architecture, API and phase reports
+|-- domain/                 # Initial data-only domain models
+|-- llm_server/             # Independent LLM gRPC skeleton
+|-- proto/chat/v1/          # Versioned .proto sources and generated bindings
+|-- scripts/                # Stub generation and process launchers
+|-- server/                 # Chat-side gRPC skeletons and repository ports
+|-- tests/                  # Unit, contract and gRPC integration tests
 |-- .env.example            # Environment-variable reference
-|-- AGENTS.md               # Phase and implementation rules
-`-- requirements.txt
+`-- requirements.txt        # Reproducible Phase 1 dependencies
 ```
 
-Directories for protobuf definitions and Raft are intentionally absent because
-those phases have not started.
+There is intentionally no `raft/` directory before Phase 5.
+
+## Version 1 gRPC surface
+
+| Service | Phase 1 RPCs |
+|---|---|
+| `HealthService` | `Check` |
+| `AuthService` | `Login`, `Logout` |
+| `ChannelService` | create, list, join, leave |
+| `ChatService` | send, history, server-streamed events |
+| `PresenceService` | heartbeat, lookup, server-streamed events |
+| `FileService` | client-streamed upload, server-streamed download |
+| `AdminService` | user status/role and channel/member management |
+| `LLMService` | smart reply, summary, suggestion |
+
+Only health checks and chat-stream keepalives succeed in Phase 1. Valid calls
+to feature RPCs return gRPC `UNIMPLEMENTED`; malformed requests return a defined
+status such as `INVALID_ARGUMENT`.
 
 ## Configuration
 
-Configuration is read from process environment variables. Defaults are safe for
-local development and are listed in `.env.example`. That file is a reference;
-Phase 0 does not add a `.env` parsing dependency.
+Settings come from environment variables and are listed in `.env.example`.
+Important Phase 1 values include `CHAT_HOST`, `CHAT_PORT`, `LLM_HOST`,
+`LLM_PORT`, `GRPC_WORKERS`, `RPC_TIMEOUT_SECONDS`,
+`STREAM_KEEPALIVE_SECONDS`, and `SHUTDOWN_GRACE_SECONDS`.
 
-Example PowerShell overrides:
+`.env.example` is a reference, not an automatically loaded file. Example:
 
 ```powershell
-$env:CHAT_NODE_ID = "chat-node-local"
 $env:CHAT_PORT = "51051"
 $env:LOG_LEVEL = "DEBUG"
 ```
 
-Ports and node identities are resolved by `common.config`; they are not embedded
-in business logic. There are no credentials in Phase 0.
+## Run and smoke-test the services
 
-## Run the placeholders
-
-From the repository root, use three terminals:
+Start the chat skeleton in terminal 1:
 
 ```powershell
 .\scripts\start_chat.cmd
 ```
 
+Start the independent LLM skeleton in terminal 2:
+
 ```powershell
 .\scripts\start_llm.cmd
 ```
 
-```powershell
-.\scripts\start_client.cmd
-```
-
-The chat and LLM placeholders print structured service identity and wait until
-`Ctrl+C`. The client prints its identity and exits. No port is bound and no RPC
-is available yet. Use one-shot mode for a quick check:
+Run the acceptance smoke client in terminal 3:
 
 ```powershell
-python -m server --once
-python -m llm_server --once
-python -m client --once
+.\scripts\start_client.cmd --smoke
 ```
 
-Expected output is one JSON log record per process containing
-`"event":"service_started"`, the service/node identity,
-`"phase":0`, and `"placeholder":true`.
+The smoke client checks that chat health is serving, a valid login skeleton
+returns `UNIMPLEMENTED`, the event subscription receives a transport keepalive,
+and stream cancellation succeeds. Stop servers with `Ctrl+C`.
 
-## Run the Phase 0 checks
+One-shot startup checks are also available:
 
 ```powershell
-python -m compileall -q common domain server llm_server client tests
-python -m unittest discover -s tests -v
+.\scripts\start_chat.cmd --once
+.\scripts\start_llm.cmd --once
+.\scripts\start_client.cmd --once
 ```
 
-The tests validate configuration defaults and overrides, invalid configuration,
-basic domain invariants, and startup identity for all three placeholders.
+## Run tests
 
-## Documentation
+```powershell
+.venv\Scripts\python -m compileall -q common domain proto server llm_server client tests scripts
+.venv\Scripts\python -m unittest discover -s tests -v
+```
 
-- [Requirements and conventions](docs/requirements.md)
-- [Architecture](docs/architecture.md)
-- [Phase 0 report](docs/phases/phase_0_report.md)
+## Metadata and deadlines
 
-## Safety and limitations
+- Clients send `x-request-id` metadata; the shared client interceptor can create
+  it and the server interceptor extracts it for logging and handlers.
+- Optional bearer tokens use `authorization: Bearer <token>`. Phase 1 extracts
+  but does not validate tokens.
+- Request messages also contain a `RequestContext`; state-changing contracts
+  reserve `client_request_id` for later idempotency.
+- Clients apply explicit RPC deadlines. Services preserve request IDs in status
+  messages or trailing metadata.
 
-The placeholder processes must not be interpreted as working distributed
-services. gRPC communication begins in Phase 1, chat persistence begins in
-Phase 2, collaboration features begin in Phase 3, the separate LLM behavior is
-implemented in Phase 4, and Raft begins in Phase 5.
+See [API contracts](docs/api_contracts.md),
+[architecture](docs/architecture.md), and the
+[Phase 1 report](docs/phases/phase_1_report.md) for details.
+
+## Phase 1 limitations
+
+No credentials are checked, no token is issued, and nothing is persisted.
+Streaming keepalives only verify transport and cancellation. File bytes are not
+accepted, LLM answers are not generated, and there is no Raft behavior.
+
