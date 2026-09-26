@@ -1,18 +1,18 @@
 # Distributed Real-time Chat and Collaboration Tool
 
 This Python/gRPC project is built one approved phase at a time for a distributed
-systems course. Phase 2 provides the single-chat-server access-control
-foundation: users, secure passwords, expiring sessions, channels, memberships,
-administrator operations, and SQLite persistence.
+systems course. Phase 3 provides a working single-server collaboration system:
+access control, channel messages and history, live event streams, heartbeat
+presence, and authorized chunked file transfer.
 
 ## Current status
 
 - Completed: Phase 0 - requirements and repository scaffold
 - Completed: Phase 1 - protobuf contracts and gRPC skeletons
 - Completed: Phase 2 - users, sessions, channels, and administration
-- Next only when explicitly requested: Phase 3 - messaging, presence, and files
-- Not implemented: messages/history, live presence, file storage, LLM behavior,
-  idempotent requests, Raft, replication, failover, or recovery
+- Completed: Phase 3 - messaging, presence, and file sharing
+- Next only when explicitly requested: Phase 4 - separate local LLM service
+- Not implemented: LLM behavior, Raft, replication, failover, or recovery
 
 ## Setup
 
@@ -40,12 +40,16 @@ Copy-Item .env.example .env
 The processes automatically load `.env` from the repository root. Variables
 already set in the process environment take precedence, which allows deployment
 or one-off overrides without editing the file. `.env` is ignored by Git; do not
-commit it. Important Phase 2 settings are:
+commit it. Important Phase 3 settings are:
 
 - `CHAT_DATABASE_PATH` - this server's SQLite database file
 - `SESSION_TTL_SECONDS` - login-token lifetime
 - `CHAT_HOST` and `CHAT_PORT` - chat gRPC listen address
 - `GRPC_WORKERS`, `RPC_TIMEOUT_SECONDS`, and `SHUTDOWN_GRACE_SECONDS`
+- `MAX_MESSAGE_LENGTH` - accepted message length
+- `PRESENCE_TIMEOUT_SECONDS` - heartbeat expiry interval
+- `FILE_STORAGE_PATH`, `MAX_FILE_SIZE_BYTES`, and `FILE_CHUNK_SIZE_BYTES`
+- `ALLOWED_FILE_TYPES` - comma-separated accepted MIME types
 
 The example contains no credentials. Put local-only seed and smoke-test
 passwords in `.env`, and do not reuse real account passwords.
@@ -96,7 +100,7 @@ same value as `SEED_SAMPLE_PASSWORD`.
 The smoke test performs health, real login, authenticated event-stream
 keepalive, and stream cancellation. Stop servers with `Ctrl+C`.
 
-## Implemented Phase 2 behavior
+## Implemented behavior through Phase 3
 
 - Passwords are salted and hashed with `scrypt`; plaintext passwords are never
   stored.
@@ -110,8 +114,15 @@ keepalive, and stream cancellation. Stop servers with `Ctrl+C`.
 - Normal users cannot call administrator RPCs.
 - Archived channels reject joins and membership changes.
 - SQLite migrations and transactions preserve state across process restarts.
-- Protected future chat/presence/file skeletons authenticate before returning
-  `UNIMPLEMENTED`.
+- Members can send idempotent messages, page through durable history, and
+  receive new messages over a server stream.
+- Heartbeats mark sessions online; users become offline after the configured
+  timeout and presence changes are streamed.
+- File uploads and downloads are chunked. Uploads validate membership,
+  filename, type, size, message linkage, and SHA-256 checksum.
+- File metadata is durable in SQLite while file bytes are stored separately.
+- Repeated message and upload `client_request_id` values return the original
+  result rather than creating duplicates.
 
 Current assumption: every non-archived channel is discoverable and self-joinable
 by active users. Private/invite-only channels have not been requested.
@@ -132,11 +143,13 @@ configured development database.
 - [Current architecture](docs/architecture.md)
 - [v1 API contracts](docs/api_contracts.md)
 - [Phase 2 report](docs/phases/phase_2_report.md)
+- [Phase 3 report](docs/phases/phase_3_report.md)
 - [Requirements and permissions](docs/requirements.md)
 
 ## Security and distributed-systems limitations
 
 Local gRPC connections are currently plaintext. There is no password-reset or
-token-refresh flow, rate limiting, audit-event persistence, message behavior,
-LLM behavior, or Raft. SQLite is local to one chat server and must never be
-mistaken for replicated state or consensus.
+token-refresh flow, rate limiting, audit-event persistence, LLM behavior, or
+Raft. Live streams and presence are process-local; clients recover durable
+messages through history after reconnecting. SQLite is local to one chat server
+and must never be mistaken for replicated state or consensus.

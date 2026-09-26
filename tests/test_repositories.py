@@ -6,7 +6,9 @@ from datetime import timedelta
 from pathlib import Path
 
 from common.metadata import utc_now
-from domain.models import Channel, ChannelMember, Session, User, UserRole, UserStatus
+from domain.models import (
+    Channel, ChannelMember, FileMetadata, Message, Session, User, UserRole, UserStatus,
+)
 from server.database import Database, apply_migrations
 from server.repositories.sqlite import SQLiteUnitOfWorkFactory
 
@@ -21,7 +23,10 @@ class SQLiteRepositoryTests(unittest.TestCase):
         self.directory.cleanup()
 
     def test_migration_is_repeatable(self) -> None:
-        self.assertEqual(apply_migrations(self.database), ["001_initial.sql"])
+        self.assertEqual(
+            apply_migrations(self.database),
+            ["001_initial.sql", "002_messaging_files.sql"],
+        )
         self.assertEqual(apply_migrations(self.database), [])
         connection = self.database.connect()
         try:
@@ -34,7 +39,10 @@ class SQLiteRepositoryTests(unittest.TestCase):
         finally:
             connection.close()
         self.assertTrue(
-            {"schema_migrations", "users", "sessions", "channels", "channel_members"}
+            {
+                "schema_migrations", "users", "sessions", "channels",
+                "channel_members", "messages", "files",
+            }
             <= tables
         )
 
@@ -67,7 +75,35 @@ class SQLiteRepositoryTests(unittest.TestCase):
             self.assertEqual(unit_of_work.channels.get(channel.id), channel)
             self.assertTrue(unit_of_work.channels.is_member(channel.id, user.id))
 
+    def test_messages_and_file_metadata_survive_reopen(self) -> None:
+        apply_migrations(self.database)
+        factory = SQLiteUnitOfWorkFactory(self.database)
+        now = utc_now()
+        user = User("user-1", "alice", UserRole.USER, UserStatus.ACTIVE, now)
+        channel = Channel("channel-1", "general", user.id, now)
+        message = Message(
+            "message-1", channel.id, user.id, "hello", now, "message-request-1"
+        )
+        metadata = FileMetadata(
+            "file-1", channel.id, user.id, "note.txt", "file-1.bin",
+            "text/plain", 5, "a" * 64, now, message.id,
+        )
+        with factory() as unit_of_work:
+            unit_of_work.users.add(user, "encoded-password")
+            unit_of_work.channels.add(channel)
+            unit_of_work.channels.add_member(ChannelMember(channel.id, user.id, now))
+            self.assertTrue(unit_of_work.messages.add(message))
+            self.assertTrue(unit_of_work.files.add(metadata, "file-request-1"))
+            unit_of_work.commit()
+
+        with SQLiteUnitOfWorkFactory(Database(self.database_path))() as unit_of_work:
+            self.assertEqual(unit_of_work.messages.get(message.id), message)
+            self.assertEqual(unit_of_work.files.get(metadata.id), metadata)
+            self.assertEqual(
+                unit_of_work.messages.get_by_client_request(user.id, "message-request-1"),
+                message,
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
-

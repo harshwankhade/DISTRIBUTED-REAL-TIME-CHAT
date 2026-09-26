@@ -1,4 +1,4 @@
-"""Environment-driven configuration for the Phase 0 processes."""
+"""Environment-driven configuration shared by project processes."""
 
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ class ServiceEndpoint:
 
 @dataclass(frozen=True, slots=True)
 class Settings:
-    """Validated settings shared by the placeholder processes."""
+    """Validated settings shared by the runnable processes."""
 
     app_env: str
     log_level: str
@@ -44,6 +44,12 @@ class Settings:
     chat_node_id: str
     chat_endpoint: ServiceEndpoint
     chat_database_path: Path
+    file_storage_path: Path
+    max_file_size_bytes: int
+    file_chunk_size_bytes: int
+    allowed_file_types: tuple[str, ...]
+    max_message_length: int
+    presence_timeout_seconds: float
     llm_node_id: str
     llm_endpoint: ServiceEndpoint
     client_id: str
@@ -108,6 +114,17 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
         choices = ", ".join(sorted(SUPPORTED_LOG_LEVELS))
         raise ConfigurationError(f"LOG_LEVEL must be one of: {choices}")
 
+    allowed_file_types = tuple(
+        item.strip().lower()
+        for item in source.get(
+            "ALLOWED_FILE_TYPES",
+            "text/plain,application/pdf,image/png,image/jpeg,application/octet-stream",
+        ).split(",")
+        if item.strip()
+    )
+    if not allowed_file_types:
+        raise ConfigurationError("ALLOWED_FILE_TYPES must contain at least one value")
+
     return Settings(
         app_env=_required_text(source, "APP_ENV", "development"),
         log_level=log_level,
@@ -127,6 +144,16 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
         ),
         chat_database_path=Path(
             _required_text(source, "CHAT_DATABASE_PATH", "data/chat-node-1.db")
+        ),
+        file_storage_path=Path(
+            _required_text(source, "FILE_STORAGE_PATH", "uploads/chat-node-1")
+        ),
+        max_file_size_bytes=_positive_int(source, "MAX_FILE_SIZE_BYTES", 10_485_760),
+        file_chunk_size_bytes=_positive_int(source, "FILE_CHUNK_SIZE_BYTES", 65_536),
+        allowed_file_types=allowed_file_types,
+        max_message_length=_positive_int(source, "MAX_MESSAGE_LENGTH", 4_000),
+        presence_timeout_seconds=_positive_float(
+            source, "PRESENCE_TIMEOUT_SECONDS", 15.0
         ),
         llm_node_id=_required_text(source, "LLM_NODE_ID", "llm-node-1"),
         llm_endpoint=ServiceEndpoint(

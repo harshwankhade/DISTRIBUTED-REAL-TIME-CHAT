@@ -1,4 +1,4 @@
-"""Runnable Phase 1 chat gRPC service skeleton."""
+"""Runnable Phase 3 chat gRPC service."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from server.grpc_server import create_chat_server
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Phase 1 chat gRPC skeleton")
+    parser = argparse.ArgumentParser(description="Phase 3 chat gRPC service")
     parser.add_argument(
         "--once",
         action="store_true",
@@ -41,8 +41,8 @@ def main(argv: list[str] | None = None) -> int:
     logger.info(
         "service_started",
         extra={
-            "phase": 2,
-            "skeleton": True,
+            "phase": 3,
+            "skeleton": False,
             "placeholder": False,
             "service_name": "chat-server",
             "service_node_id": settings.chat_node_id,

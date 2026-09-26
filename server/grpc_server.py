@@ -1,4 +1,4 @@
-"""Construction of the Phase 1 chat gRPC server."""
+"""Construction of the Phase 3 chat gRPC server."""
 
 from __future__ import annotations
 
@@ -30,7 +30,11 @@ from server.services import (
 from server.application.admin import AdminApplication
 from server.application.auth import AuthApplication
 from server.application.channels import ChannelApplication
+from server.application.chat import ChatApplication
+from server.application.files import FileApplication
+from server.application.presence import PresenceApplication
 from server.database import Database, apply_migrations
+from server.events import EventBroker
 from server.repositories.sqlite import SQLiteUnitOfWorkFactory
 
 
@@ -40,7 +44,7 @@ def create_chat_server(
     bind_address: str | None = None,
     logger: LoggerAdapter | None = None,
 ) -> tuple[grpc.Server, str]:
-    """Create and register the chat-side Phase 1 service skeletons."""
+    """Create and register the Phase 3 chat-side services."""
 
     database = Database(settings.chat_database_path)
     apply_migrations(database)
@@ -51,6 +55,25 @@ def create_chat_server(
     )
     channel_application = ChannelApplication(unit_of_work_factory, auth_application)
     admin_application = AdminApplication(unit_of_work_factory, auth_application)
+    events = EventBroker()
+    chat_application = ChatApplication(
+        unit_of_work_factory,
+        auth_application,
+        events,
+        max_message_length=settings.max_message_length,
+    )
+    presence_application = PresenceApplication(
+        auth_application,
+        events,
+        timeout_seconds=settings.presence_timeout_seconds,
+    )
+    file_application = FileApplication(
+        unit_of_work_factory,
+        auth_application,
+        storage_path=settings.file_storage_path,
+        max_size_bytes=settings.max_file_size_bytes,
+        allowed_content_types=settings.allowed_file_types,
+    )
 
     server = grpc.server(
         futures.ThreadPoolExecutor(max_workers=settings.grpc_workers),
@@ -67,16 +90,17 @@ def create_chat_server(
     )
     chat_pb2_grpc.add_ChatServiceServicer_to_server(
         ChatService(
-            auth_application,
+            chat_application,
+            events,
             keepalive_seconds=settings.stream_keepalive_seconds,
         ),
         server,
     )
     presence_pb2_grpc.add_PresenceServiceServicer_to_server(
-        PresenceService(auth_application), server
+        PresenceService(presence_application, events), server
     )
     file_pb2_grpc.add_FileServiceServicer_to_server(
-        FileService(auth_application), server
+        FileService(file_application, chunk_size=settings.file_chunk_size_bytes), server
     )
     admin_pb2_grpc.add_AdminServiceServicer_to_server(
         AdminService(admin_application), server

@@ -8,7 +8,16 @@ from datetime import datetime
 from pathlib import Path
 from types import TracebackType
 
-from domain.models import Channel, ChannelMember, Session, User, UserRole, UserStatus
+from domain.models import (
+    Channel,
+    ChannelMember,
+    FileMetadata,
+    Message,
+    Session,
+    User,
+    UserRole,
+    UserStatus,
+)
 from server.database import Database
 
 
@@ -43,6 +52,32 @@ def _channel_from_row(row: sqlite3.Row) -> Channel:
         created_by=row["created_by"],
         created_at=_from_text(row["created_at"]),
         is_archived=row["archived_at"] is not None,
+    )
+
+
+def _message_from_row(row: sqlite3.Row) -> Message:
+    return Message(
+        id=row["id"],
+        channel_id=row["channel_id"],
+        sender_id=row["sender_id"],
+        body=row["body"],
+        created_at=_from_text(row["created_at"]),
+        client_request_id=row["client_request_id"],
+    )
+
+
+def _file_from_row(row: sqlite3.Row) -> FileMetadata:
+    return FileMetadata(
+        id=row["id"],
+        channel_id=row["channel_id"],
+        uploader_id=row["uploader_id"],
+        original_name=row["original_name"],
+        storage_reference=row["storage_reference"],
+        content_type=row["content_type"],
+        size_bytes=row["size_bytes"],
+        checksum_sha256=row["checksum_sha256"],
+        created_at=_from_text(row["created_at"]),
+        message_id=row["message_id"],
     )
 
 
@@ -219,21 +254,129 @@ class SQLiteChannelRepository:
         return row is not None
 
 
+class SQLiteMessageRepository:
+    def __init__(self, connection: sqlite3.Connection) -> None:
+        self._connection = connection
+
+    def add(self, message: Message) -> bool:
+        cursor = self._connection.execute(
+            """
+            INSERT OR IGNORE INTO messages(
+                id, channel_id, sender_id, body, created_at, client_request_id
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                message.id,
+                message.channel_id,
+                message.sender_id,
+                message.body,
+                _to_text(message.created_at),
+                message.client_request_id,
+            ),
+        )
+        return cursor.rowcount > 0
+
+    def get(self, message_id: str) -> Message | None:
+        row = self._connection.execute(
+            "SELECT * FROM messages WHERE id = ?", (message_id,)
+        ).fetchone()
+        return None if row is None else _message_from_row(row)
+
+    def get_by_client_request(self, sender_id: str, client_request_id: str) -> Message | None:
+        row = self._connection.execute(
+            """SELECT * FROM messages
+               WHERE sender_id = ? AND client_request_id = ?""",
+            (sender_id, client_request_id),
+        ).fetchone()
+        return None if row is None else _message_from_row(row)
+
+    def list_page(
+        self, channel_id: str, *, limit: int, before_sequence: int | None
+    ) -> list[tuple[int, Message]]:
+        condition = "" if before_sequence is None else "AND sequence < ?"
+        parameters: tuple[object, ...]
+        if before_sequence is None:
+            parameters = (channel_id, limit)
+        else:
+            parameters = (channel_id, before_sequence, limit)
+        rows = self._connection.execute(
+            f"""SELECT * FROM messages
+                WHERE channel_id = ? {condition}
+                ORDER BY sequence DESC LIMIT ?""",
+            parameters,
+        ).fetchall()
+        return [(row["sequence"], _message_from_row(row)) for row in rows]
+
+
+class SQLiteFileRepository:
+    def __init__(self, connection: sqlite3.Connection) -> None:
+        self._connection = connection
+
+    def add(self, metadata: FileMetadata, client_request_id: str) -> bool:
+        cursor = self._connection.execute(
+            """
+            INSERT OR IGNORE INTO files(
+                id, channel_id, message_id, uploader_id, original_name,
+                storage_reference, content_type, size_bytes, checksum_sha256,
+                created_at, client_request_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                metadata.id,
+                metadata.channel_id,
+                metadata.message_id,
+                metadata.uploader_id,
+                metadata.original_name,
+                metadata.storage_reference,
+                metadata.content_type,
+                metadata.size_bytes,
+                metadata.checksum_sha256,
+                _to_text(metadata.created_at),
+                client_request_id,
+            ),
+        )
+        return cursor.rowcount > 0
+
+    def get(self, file_id: str) -> FileMetadata | None:
+        row = self._connection.execute(
+            "SELECT * FROM files WHERE id = ?", (file_id,)
+        ).fetchone()
+        return None if row is None else _file_from_row(row)
+
+    def get_by_client_request(
+        self, uploader_id: str, client_request_id: str
+    ) -> FileMetadata | None:
+        row = self._connection.execute(
+            """SELECT * FROM files
+               WHERE uploader_id = ? AND client_request_id = ?""",
+            (uploader_id, client_request_id),
+        ).fetchone()
+        return None if row is None else _file_from_row(row)
+
+
 class SQLiteUnitOfWork:
-    def __init__(self, database: Database) -> None:
+    def __init__(self, database: Database, *, immediate: bool = False) -> None:
         self._database = database
+        self._immediate = immediate
         self.connection: sqlite3.Connection | None = None
         self.users: SQLiteUserRepository
         self.sessions: SQLiteSessionRepository
         self.channels: SQLiteChannelRepository
+        self.messages: SQLiteMessageRepository
+        self.files: SQLiteFileRepository
         self._committed = False
 
     def __enter__(self) -> SQLiteUnitOfWork:
         self.connection = self._database.connect()
-        self.connection.execute("BEGIN")
+        # Command handlers may reserve SQLite's single writer slot before they
+        # read state that they subsequently update. Read-only/nested operations
+        # retain ordinary deferred transactions.
+        self.connection.execute("BEGIN IMMEDIATE" if self._immediate else "BEGIN")
         self.users = SQLiteUserRepository(self.connection)
         self.sessions = SQLiteSessionRepository(self.connection)
         self.channels = SQLiteChannelRepository(self.connection)
+        self.messages = SQLiteMessageRepository(self.connection)
+        self.files = SQLiteFileRepository(self.connection)
         return self
 
     def commit(self) -> None:
@@ -264,10 +407,9 @@ class SQLiteUnitOfWorkFactory:
     def __init__(self, database: Database) -> None:
         self._database = database
 
-    def __call__(self) -> SQLiteUnitOfWork:
-        return SQLiteUnitOfWork(self._database)
+    def __call__(self, *, immediate: bool = False) -> SQLiteUnitOfWork:
+        return SQLiteUnitOfWork(self._database, immediate=immediate)
 
 
 def is_unique_violation(error: sqlite3.IntegrityError) -> bool:
     return "UNIQUE constraint failed" in str(error)
-

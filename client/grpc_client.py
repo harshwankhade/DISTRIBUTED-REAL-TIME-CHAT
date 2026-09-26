@@ -79,7 +79,9 @@ def run_smoke_test(
         stream = chat_stub.SubscribeEvents(
             chat_pb2.SubscribeEventsRequest(
                 context=common_pb2.RequestContext(request_id=stream_request_id),
-                channel_ids=["phase1-smoke-channel"],
+                # An empty filter subscribes to no channel data but still
+                # verifies authenticated stream setup, keepalive, and cancellation.
+                channel_ids=[],
             ),
             timeout=timeout_seconds,
         )

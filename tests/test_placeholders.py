@@ -15,11 +15,11 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 class PlaceholderProcessTests(unittest.TestCase):
     def test_each_process_reports_its_identity(self) -> None:
         expected = {
-            "server": ("chat-server", "chat-node-1", 2, False),
-            "llm_server": ("llm-server", "llm-node-1", 1, True),
-            "client": ("chat-client", "client-1", 2, True),
+            "server": ("chat-server", "chat-node-1", 3, False, False),
+            "llm_server": ("llm-server", "llm-node-1", 1, True, True),
+            "client": ("chat-client", "client-1", 3, True, True),
         }
-        for module_name, (service, node_id, phase, placeholder) in expected.items():
+        for module_name, (service, node_id, phase, placeholder, skeleton) in expected.items():
             with self.subTest(module=module_name):
                 arguments = [sys.executable, "-m", module_name, "--once"]
                 if module_name in {"server", "llm_server"}:
@@ -45,7 +45,7 @@ class PlaceholderProcessTests(unittest.TestCase):
                 self.assertEqual(payload["service_name"], service)
                 self.assertEqual(payload["service_node_id"], node_id)
                 self.assertEqual(payload["placeholder"], placeholder)
-                self.assertTrue(payload["skeleton"])
+                self.assertEqual(payload["skeleton"], skeleton)
                 self.assertEqual(payload["phase"], phase)
 
 

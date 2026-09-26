@@ -24,6 +24,9 @@ from proto.chat.v1 import (
 from server.grpc_server import create_chat_server
 from server.database import Database
 from server.seed import seed_users
+from common.metadata import utc_now
+from domain.models import Channel, ChannelMember
+from server.repositories.sqlite import SQLiteUnitOfWorkFactory
 
 
 def _channel(target: str, request_id: str, token: str | None = None) -> grpc.Channel:
@@ -51,6 +54,16 @@ class ChatGrpcSkeletonTests(unittest.TestCase):
             sample_usernames=["smoke-user"],
             sample_password="smoke-password-123",
         )
+        with SQLiteUnitOfWorkFactory(Database(cls.settings.chat_database_path))() as unit_of_work:
+            user = unit_of_work.users.get_by_username("smoke-user").user
+            now = utc_now()
+            unit_of_work.channels.add(
+                Channel("phase1-smoke-channel", "smoke", user.id, now)
+            )
+            unit_of_work.channels.add_member(
+                ChannelMember("phase1-smoke-channel", user.id, now)
+            )
+            unit_of_work.commit()
         cls.server, cls.target = create_chat_server(
             cls.settings, bind_address="127.0.0.1:0"
         )
@@ -132,7 +145,7 @@ class ChatGrpcSkeletonTests(unittest.TestCase):
             call = chat_pb2_grpc.ChatServiceStub(channel).SubscribeEvents(
                 chat_pb2.SubscribeEventsRequest(
                     context=common_pb2.RequestContext(request_id=request_id),
-                    channel_ids=["channel-1"],
+                    channel_ids=["phase1-smoke-channel"],
                 ),
                 timeout=2,
             )

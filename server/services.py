@@ -1,8 +1,7 @@
-"""Typed Phase 1 chat-side gRPC service skeletons."""
+"""Typed chat-side gRPC services through Phase 3."""
 
 from __future__ import annotations
 
-import time
 from collections.abc import Iterator
 
 import grpc
@@ -11,7 +10,7 @@ from google.protobuf.timestamp_pb2 import Timestamp
 from common.errors import ApplicationError
 from common.grpc_metadata import get_auth_token, get_request_id
 from common.metadata import new_request_id, utc_now
-from domain.models import Channel, User
+from domain.models import Channel, FileMetadata, Message, Presence, User
 from proto.chat.v1 import (
     admin_pb2,
     admin_pb2_grpc,
@@ -32,10 +31,13 @@ from proto.chat.v1 import (
 from server.application.admin import AdminApplication
 from server.application.auth import AuthApplication
 from server.application.channels import ChannelApplication
+from server.application.chat import ChatApplication
+from server.application.files import FileApplication
+from server.application.presence import PresenceApplication
+from server.events import EventBroker
 from server.validation import (
     abort_application_error,
     abort_invalid,
-    abort_unimplemented,
     require_request_id,
     require_text,
 )
@@ -75,6 +77,39 @@ def _channel_summary(channel: Channel) -> common_pb2.ChannelSummary:
         channel_id=channel.id,
         name=channel.name,
         archived=channel.is_archived,
+    )
+
+
+def _message_view(message: Message) -> common_pb2.MessageView:
+    return common_pb2.MessageView(
+        message_id=message.id,
+        channel_id=message.channel_id,
+        sender_id=message.sender_id,
+        body=message.body,
+        created_at=_timestamp(message.created_at),
+        client_request_id=message.client_request_id,
+    )
+
+
+def _file_view(metadata: FileMetadata) -> common_pb2.FileMetadataView:
+    return common_pb2.FileMetadataView(
+        file_id=metadata.id,
+        channel_id=metadata.channel_id,
+        message_id=metadata.message_id or "",
+        original_name=metadata.original_name,
+        content_type=metadata.content_type,
+        size_bytes=metadata.size_bytes,
+        checksum_sha256=metadata.checksum_sha256,
+        created_at=_timestamp(metadata.created_at),
+    )
+
+
+def _presence_response(presence: Presence, request_id: str) -> presence_pb2.PresenceResponse:
+    return presence_pb2.PresenceResponse(
+        status=_ok_status(request_id),
+        user_id=presence.user_id,
+        presence=presence.status.value,
+        last_seen_at=_timestamp(presence.last_seen_at),
     )
 
 
@@ -203,8 +238,10 @@ class ChannelService(channel_pb2_grpc.ChannelServiceServicer):
 
 
 class ChatService(chat_pb2_grpc.ChatServiceServicer):
-    def __init__(self, auth: AuthApplication, *, keepalive_seconds: float) -> None:
-        self._auth = auth
+    def __init__(self, application: ChatApplication, events: EventBroker,
+                 *, keepalive_seconds: float) -> None:
+        self._application = application
+        self._events = events
         self._keepalive_seconds = keepalive_seconds
 
     def SendMessage(
@@ -215,10 +252,16 @@ class ChatService(chat_pb2_grpc.ChatServiceServicer):
         require_text(request.channel_id, "channel_id", request_id, context)
         require_text(request.body, "body", request_id, context)
         try:
-            self._auth.authenticate(get_auth_token(), request_id=request_id)
+            message = self._application.send_message(
+                get_auth_token(), request.channel_id, request.body,
+                request.context.client_request_id, request_id=request_id,
+            )
         except ApplicationError as error:
             abort_application_error(context, error, request_id)
-        abort_unimplemented(context, request_id, "ChatService.SendMessage")
+        return chat_pb2.SendMessageResponse(
+            status=_ok_status(request_id, "message accepted"),
+            message=_message_view(message),
+        )
 
     def GetHistory(
         self, request: chat_pb2.GetHistoryRequest, context: grpc.ServicerContext
@@ -228,48 +271,70 @@ class ChatService(chat_pb2_grpc.ChatServiceServicer):
         if request.page_size < 0:
             abort_invalid(context, request_id, "page_size must not be negative")
         try:
-            self._auth.authenticate(get_auth_token(), request_id=request_id)
+            page = self._application.get_history(
+                get_auth_token(), request.channel_id, request.page_size,
+                request.page_token, request_id=request_id,
+            )
         except ApplicationError as error:
             abort_application_error(context, error, request_id)
-        abort_unimplemented(context, request_id, "ChatService.GetHistory")
+        return chat_pb2.GetHistoryResponse(
+            status=_ok_status(request_id),
+            messages=[_message_view(message) for message in page.messages],
+            next_page_token=page.next_page_token,
+        )
 
     def SubscribeEvents(
         self, request: chat_pb2.SubscribeEventsRequest, context: grpc.ServicerContext
     ) -> Iterator[chat_pb2.ChatEvent]:
         request_id = require_request_id(request.context, context)
-        if not request.channel_ids:
-            abort_invalid(context, request_id, "at least one channel_id is required")
         if any(not channel_id.strip() for channel_id in request.channel_ids):
             abort_invalid(context, request_id, "channel_ids must not contain empty values")
         try:
-            self._auth.authenticate(get_auth_token(), request_id=request_id)
+            channel_ids = self._application.authorize_subscription(
+                get_auth_token(), list(request.channel_ids), request_id=request_id
+            )
         except ApplicationError as error:
             abort_application_error(context, error, request_id)
 
         context.set_trailing_metadata((("x-request-id", request_id),))
-        while context.is_active():
-            yield chat_pb2.ChatEvent(
-                event_id=new_request_id(),
-                type=chat_pb2.CHAT_EVENT_TYPE_KEEPALIVE,
-                occurred_at=_timestamp_now(),
-                request_id=get_request_id() or request_id,
-            )
-            time.sleep(self._keepalive_seconds)
+        subscription = self._events.subscribe()
+        try:
+            while context.is_active():
+                event = subscription.get(self._keepalive_seconds)
+                if event is None:
+                    yield chat_pb2.ChatEvent(
+                        event_id=new_request_id(),
+                        type=chat_pb2.CHAT_EVENT_TYPE_KEEPALIVE,
+                        occurred_at=_timestamp_now(),
+                        request_id=get_request_id() or request_id,
+                    )
+                elif event.kind == "message" and isinstance(event.payload, Message):
+                    if event.payload.channel_id in channel_ids:
+                        yield chat_pb2.ChatEvent(
+                            event_id=event.id,
+                            type=chat_pb2.CHAT_EVENT_TYPE_MESSAGE,
+                            occurred_at=_timestamp(event.occurred_at),
+                            request_id=request_id,
+                            message=_message_view(event.payload),
+                        )
+        finally:
+            subscription.close()
 
 
 class PresenceService(presence_pb2_grpc.PresenceServiceServicer):
-    def __init__(self, auth: AuthApplication) -> None:
-        self._auth = auth
+    def __init__(self, application: PresenceApplication, events: EventBroker) -> None:
+        self._application = application
+        self._events = events
 
     def Heartbeat(
         self, request: presence_pb2.HeartbeatRequest, context: grpc.ServicerContext
     ) -> presence_pb2.PresenceResponse:
         request_id = require_request_id(request.context, context)
         try:
-            self._auth.authenticate(get_auth_token(), request_id=request_id)
+            presence = self._application.heartbeat(get_auth_token(), request_id=request_id)
         except ApplicationError as error:
             abort_application_error(context, error, request_id)
-        abort_unimplemented(context, request_id, "PresenceService.Heartbeat")
+        return _presence_response(presence, request_id)
 
     def GetPresence(
         self, request: presence_pb2.GetPresenceRequest, context: grpc.ServicerContext
@@ -277,10 +342,12 @@ class PresenceService(presence_pb2_grpc.PresenceServiceServicer):
         request_id = require_request_id(request.context, context)
         require_text(request.user_id, "user_id", request_id, context)
         try:
-            self._auth.authenticate(get_auth_token(), request_id=request_id)
+            presence = self._application.get(
+                get_auth_token(), request.user_id, request_id=request_id
+            )
         except ApplicationError as error:
             abort_application_error(context, error, request_id)
-        abort_unimplemented(context, request_id, "PresenceService.GetPresence")
+        return _presence_response(presence, request_id)
 
     def SubscribePresence(
         self,
@@ -289,16 +356,37 @@ class PresenceService(presence_pb2_grpc.PresenceServiceServicer):
     ) -> Iterator[presence_pb2.PresenceEvent]:
         request_id = require_request_id(request.context, context)
         try:
-            self._auth.authenticate(get_auth_token(), request_id=request_id)
+            self._application.authenticate_subscription(
+                get_auth_token(), request_id=request_id
+            )
         except ApplicationError as error:
             abort_application_error(context, error, request_id)
-        abort_unimplemented(context, request_id, "PresenceService.SubscribePresence")
-        yield  # pragma: no cover - keeps this method a streaming generator
+        selected = set(request.user_ids)
+        subscription = self._events.subscribe()
+        try:
+            while context.is_active():
+                self._application.expire()
+                event = subscription.get(0.05)
+                if (
+                    event is not None
+                    and event.kind == "presence"
+                    and isinstance(event.payload, Presence)
+                    and (not selected or event.payload.user_id in selected)
+                ):
+                    yield presence_pb2.PresenceEvent(
+                        event_id=event.id,
+                        user_id=event.payload.user_id,
+                        presence=event.payload.status.value,
+                        occurred_at=_timestamp(event.occurred_at),
+                    )
+        finally:
+            subscription.close()
 
 
 class FileService(file_pb2_grpc.FileServiceServicer):
-    def __init__(self, auth: AuthApplication) -> None:
-        self._auth = auth
+    def __init__(self, application: FileApplication, *, chunk_size: int) -> None:
+        self._application = application
+        self._chunk_size = chunk_size
 
     def UploadFile(
         self,
@@ -311,11 +399,31 @@ class FileService(file_pb2_grpc.FileServiceServicer):
         request_id = require_request_id(first_request.header.context, context)
         require_text(first_request.header.channel_id, "channel_id", request_id, context)
         require_text(first_request.header.original_name, "original_name", request_id, context)
+
+        def chunks() -> Iterator[bytes]:
+            for item in request_iterator:
+                if not item.HasField("chunk"):
+                    abort_invalid(context, request_id, "upload items after header must be chunks")
+                yield item.chunk
+
         try:
-            self._auth.authenticate(get_auth_token(), request_id=request_id)
+            metadata = self._application.upload(
+                get_auth_token(),
+                channel_id=first_request.header.channel_id,
+                message_id=first_request.header.message_id,
+                original_name=first_request.header.original_name,
+                content_type=first_request.header.content_type,
+                expected_size=first_request.header.expected_size_bytes,
+                expected_checksum=first_request.header.expected_checksum_sha256,
+                client_request_id=first_request.header.context.client_request_id,
+                chunks=chunks(),
+                request_id=request_id,
+            )
         except ApplicationError as error:
             abort_application_error(context, error, request_id)
-        abort_unimplemented(context, request_id, "FileService.UploadFile")
+        return file_pb2.UploadFileResponse(
+            status=_ok_status(request_id, "file uploaded"), file=_file_view(metadata)
+        )
 
     def DownloadFile(
         self, request: file_pb2.DownloadFileRequest, context: grpc.ServicerContext
@@ -323,11 +431,18 @@ class FileService(file_pb2_grpc.FileServiceServicer):
         request_id = require_request_id(request.context, context)
         require_text(request.file_id, "file_id", request_id, context)
         try:
-            self._auth.authenticate(get_auth_token(), request_id=request_id)
+            metadata, path = self._application.authorize_download(
+                get_auth_token(), request.file_id, request_id=request_id
+            )
         except ApplicationError as error:
             abort_application_error(context, error, request_id)
-        abort_unimplemented(context, request_id, "FileService.DownloadFile")
-        yield  # pragma: no cover - keeps this method a streaming generator
+        yield file_pb2.DownloadFileResponse(metadata=_file_view(metadata))
+        with path.open("rb") as source:
+            while context.is_active():
+                chunk = source.read(self._chunk_size)
+                if not chunk:
+                    break
+                yield file_pb2.DownloadFileResponse(chunk=chunk)
 
 
 class AdminService(admin_pb2_grpc.AdminServiceServicer):

@@ -1,91 +1,88 @@
-# Architecture - Phase 2 Baseline
+# Architecture - Phase 3 Baseline
 
 ## Current executable architecture
 
 ```text
-client / tests
+clients / tests
       |
       | gRPC + request ID + bearer token
       v
 chat transport services
-  Auth / Channel / Admin       Chat / Presence / File skeletons
-      |                              (authentication only)
-      v
-application services
-  authentication / sessions / authorization / channel rules
+  Auth / Channel / Admin / Chat / Presence / File
       |
       v
-unit of work + repositories
-      |
+application services + immutable commands
+      |                    |
+      |                    +--> process-local event broker --> server streams
       v
-per-server SQLite database
+unit of work + repositories       transient presence tracker
+      |                                   |
+      v                                   +--> heartbeat timeout
+per-server SQLite
+  users, sessions, channels, messages, file metadata, idempotency keys
+      |
+      +--> stable references to file bytes under FILE_STORAGE_PATH
 
 independent LLM gRPC skeleton (no model behavior yet)
 ```
 
 ## Layer responsibilities
 
-- **gRPC layer:** validates wire-level required fields, reads metadata, invokes
-  application services, and maps safe application errors to gRPC statuses.
-- **Application layer:** owns authentication, permissions, token lifecycle,
-  channel rules, and transaction-sized operations. It does not import protobuf.
+- **gRPC layer:** validates wire shapes, reads metadata, invokes application
+  services, maps safe errors to gRPC statuses, and streams events/file chunks.
+- **Application layer:** owns authentication, permissions, channel/message/file
+  rules, idempotency, presence behavior, and command creation.
+- **Event layer:** fans out live message and presence events inside one process.
+  It is not a durable queue; message history is the reconnect recovery path.
 - **Repository layer:** owns SQL and maps rows to domain objects.
-- **Database layer:** creates connections and applies ordered migrations once.
-- **Security layer:** owns password and session-token primitives.
+- **Storage layer:** keeps file bytes outside SQLite using generated names while
+  SQLite owns checksums, authorization linkage, and stable references.
 
-This separation prevents gRPC handlers from becoming the persistence model and
-allows future committed commands to invoke application/repository behavior
-without changing client contracts.
+## Durable messaging and idempotency
 
-## Persistence and transactions
+`SendMessageCommand` receives its ID and UTC timestamp before persistence. The
+database uniquely constrains `(sender_id, client_request_id)`. Retrying the same
+content returns the original message; reusing the key for different content is
+rejected. History uses a database sequence cursor rather than a shifting offset,
+so new messages do not duplicate or skip items in an existing pagination walk.
 
-Each chat server uses its own configured SQLite file. Every application
-operation opens one connection and transaction through `SQLiteUnitOfWork`.
-Writes explicitly commit; exceptions and uncommitted operations roll back.
-Foreign keys, busy timeout, and WAL mode are enabled on file databases.
+SQLite permits one writer. Phase 3 command transactions use `BEGIN IMMEDIATE`
+to reserve that writer slot before read-then-write logic, avoiding transaction
+upgrade races between concurrent gRPC workers. This is local serialization, not
+distributed ordering or Raft consensus.
 
-`001_initial.sql` creates users, sessions, channels, memberships, indexes, and
-the migration record. Migration application is repeatable. A shared SQLite file
-between future Raft nodes is explicitly not the replication design.
+## Live streams
 
-## Authentication model
+After authorization, each subscriber receives a bounded in-memory queue. Chat
+streams filter by channels whose membership was verified when the stream began.
+Slow consumers may lose live events when their queue is full; they can recover
+durable messages with `GetHistory`. Membership changes during an already-open
+stream take effect after reconnect in this phase.
 
-Passwords use salted `scrypt` with versioned parameters stored in the encoded
-hash. Login performs a dummy hash check for unknown users to reduce obvious
-username timing differences.
+## Presence
 
-Successful login returns a random opaque token. Only a SHA-256 digest is stored.
-The request interceptor extracts `authorization: Bearer <token>` without logging
-the token. Application authentication verifies that the session exists, is not
-revoked or expired, and belongs to an active user.
+Presence is deliberately transient. A valid session heartbeat records a UTC
+last-seen time per session. A user is online while any session has a recent
+heartbeat and becomes offline once all heartbeats exceed
+`PRESENCE_TIMEOUT_SECONDS`. Expiry is evaluated by presence reads and active
+presence streams. Presence is not stored in SQLite or intended for the Raft log.
 
-Disabling a user revokes all current sessions in the same transaction. Logout
-revokes the current session. There is no refresh-token flow.
+## File storage
 
-## Authorization and channel rules
+Uploads receive a header followed by byte chunks. Before accepting metadata the
+server checks authentication, channel membership, active-channel state, safe
+filename, MIME allowlist, size limit, optional message linkage, and SHA-256.
+Chunks go to a `.part` temporary file and are atomically renamed only after size
+and checksum verification. Invalid or interrupted uploads remove the temporary
+file. Generated storage names prevent traversal and collisions.
 
-- Admin RPCs require an authenticated active administrator.
-- Creating channels through `ChannelService` is also administrator-only.
-- Active normal users can list active channels and self-join them.
-- Leaving requires existing membership.
-- Admins can view archived channels and manage members of active channels.
-- Archived channels reject joins and membership changes.
-
-The current public-channel assumption avoids inventing a private-channel model
-before it is requested.
+File metadata and upload idempotency keys are durable in SQLite. File bytes are
+not stored in SQLite and will not be copied into the future Raft log. Downloads
+recheck membership and stored-file integrity before streaming chunks.
 
 ## Future Raft compatibility
 
-Durable write inputs are represented by immutable command objects containing
-IDs and timestamps generated before persistence. This prepares a clean command
-boundary for later deterministic replication. These commands are currently
-executed in one local SQLite transaction only; there is no log, leader,
-replication, majority acknowledgement, or failover.
-
-## Concurrency and failures
-
-gRPC worker threads use separate SQLite connections and transactions. SQLite's
-locking plus busy timeout protects local concurrent access. Requests can still
-fail with normal gRPC/database errors; distributed retries and duplicate-request
-handling belong to later phases.
-
+Durable message and file-metadata writes are represented by immutable commands.
+IDs, timestamps, and checksums are fixed before repository application. Phase 3
+still commits to one local SQLite database: there is no replicated log, leader,
+majority acknowledgement, failover, or cross-node stream fan-out.

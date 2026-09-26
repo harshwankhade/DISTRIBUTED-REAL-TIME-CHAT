@@ -73,6 +73,26 @@ class SettingsTests(unittest.TestCase):
         with self.assertRaisesRegex(ConfigurationError, "SESSION_TTL_SECONDS"):
             load_settings({"SESSION_TTL_SECONDS": "0"})
 
+    def test_phase3_limits_and_file_types_are_configurable(self) -> None:
+        settings = load_settings(
+            {
+                "MAX_FILE_SIZE_BYTES": "2048",
+                "FILE_CHUNK_SIZE_BYTES": "128",
+                "MAX_MESSAGE_LENGTH": "500",
+                "PRESENCE_TIMEOUT_SECONDS": "2.5",
+                "ALLOWED_FILE_TYPES": "text/plain, image/png",
+            }
+        )
+        self.assertEqual(settings.max_file_size_bytes, 2048)
+        self.assertEqual(settings.file_chunk_size_bytes, 128)
+        self.assertEqual(settings.max_message_length, 500)
+        self.assertEqual(settings.presence_timeout_seconds, 2.5)
+        self.assertEqual(settings.allowed_file_types, ("text/plain", "image/png"))
+
+    def test_empty_allowed_file_types_is_rejected(self) -> None:
+        with self.assertRaisesRegex(ConfigurationError, "ALLOWED_FILE_TYPES"):
+            load_settings({"ALLOWED_FILE_TYPES": " , "})
+
 
 if __name__ == "__main__":
     unittest.main()

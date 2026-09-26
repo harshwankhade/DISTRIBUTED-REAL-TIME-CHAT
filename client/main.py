@@ -58,7 +58,7 @@ def main(argv: list[str] | None = None) -> int:
         logger.info(
             "smoke_test_completed",
             extra={
-                "phase": 2,
+                "phase": 3,
                 "target": target,
                 "health_serving": result.health_serving,
                 "health_request_id": result.health_request_id,
@@ -81,7 +81,7 @@ def main(argv: list[str] | None = None) -> int:
         node_id=settings.client_id,
         address=target,
         once=True,
-        phase=2,
+        phase=3,
     )
     return 0
 

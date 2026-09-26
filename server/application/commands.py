@@ -51,3 +51,27 @@ class ChangeMembershipCommand:
     add: bool
     changed_at: datetime
 
+
+@dataclass(frozen=True, slots=True)
+class SendMessageCommand:
+    message_id: str
+    channel_id: str
+    sender_id: str
+    body: str
+    created_at: datetime
+    client_request_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class StoreFileMetadataCommand:
+    file_id: str
+    channel_id: str
+    uploader_id: str
+    original_name: str
+    storage_reference: str
+    content_type: str
+    size_bytes: int
+    checksum_sha256: str
+    created_at: datetime
+    client_request_id: str
+    message_id: str | None = None
