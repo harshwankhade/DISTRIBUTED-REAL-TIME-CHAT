@@ -121,6 +121,8 @@ check using `SMOKE_USERNAME` and `SMOKE_PASSWORD`.
 - Admin-only user status/role and channel/member operations.
 - Persistent channel membership and archive rules in per-server SQLite.
 - Idempotent messages, stable history pagination, and live server streams.
+- Human-readable sender usernames in message history and live chat, while
+  retaining stable user IDs for authorization and persistence.
 - Heartbeat-based online/offline transitions and last-seen data.
 - Authorized chunked file transfer with size/type/path validation and SHA-256.
 - A separate gRPC LLM process with swappable deterministic mock and local

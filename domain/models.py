@@ -102,6 +102,7 @@ class Message:
     body: str
     created_at: datetime
     client_request_id: str
+    sender_username: str = ""
 
     def __post_init__(self) -> None:
         _require_text(self.id, "id")
@@ -109,6 +110,8 @@ class Message:
         _require_text(self.sender_id, "sender_id")
         _require_text(self.body, "body")
         _require_text(self.client_request_id, "client_request_id")
+        if self.sender_username:
+            _require_text(self.sender_username, "sender_username")
         _require_utc(self.created_at, "created_at")
 
 
@@ -186,4 +189,3 @@ class AuditEvent:
         ):
             _require_text(getattr(self, field_name), field_name)
         _require_utc(self.occurred_at, "occurred_at")
-

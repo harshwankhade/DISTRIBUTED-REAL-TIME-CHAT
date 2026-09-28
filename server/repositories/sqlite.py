@@ -63,6 +63,7 @@ def _message_from_row(row: sqlite3.Row) -> Message:
         body=row["body"],
         created_at=_from_text(row["created_at"]),
         client_request_id=row["client_request_id"],
+        sender_username=row["sender_username"],
     )
 
 
@@ -278,14 +279,18 @@ class SQLiteMessageRepository:
 
     def get(self, message_id: str) -> Message | None:
         row = self._connection.execute(
-            "SELECT * FROM messages WHERE id = ?", (message_id,)
+            """SELECT messages.*, users.username AS sender_username
+               FROM messages JOIN users ON users.id = messages.sender_id
+               WHERE messages.id = ?""",
+            (message_id,),
         ).fetchone()
         return None if row is None else _message_from_row(row)
 
     def get_by_client_request(self, sender_id: str, client_request_id: str) -> Message | None:
         row = self._connection.execute(
-            """SELECT * FROM messages
-               WHERE sender_id = ? AND client_request_id = ?""",
+            """SELECT messages.*, users.username AS sender_username
+               FROM messages JOIN users ON users.id = messages.sender_id
+               WHERE messages.sender_id = ? AND messages.client_request_id = ?""",
             (sender_id, client_request_id),
         ).fetchone()
         return None if row is None else _message_from_row(row)
@@ -300,9 +305,10 @@ class SQLiteMessageRepository:
         else:
             parameters = (channel_id, before_sequence, limit)
         rows = self._connection.execute(
-            f"""SELECT * FROM messages
-                WHERE channel_id = ? {condition}
-                ORDER BY sequence DESC LIMIT ?""",
+            f"""SELECT messages.*, users.username AS sender_username
+                FROM messages JOIN users ON users.id = messages.sender_id
+                WHERE messages.channel_id = ? {condition}
+                ORDER BY messages.sequence DESC LIMIT ?""",
             parameters,
         ).fetchall()
         return [(row["sequence"], _message_from_row(row)) for row in rows]
@@ -315,19 +321,20 @@ class SQLiteMessageRepository:
         from_time: datetime | None = None,
         to_time: datetime | None = None,
     ) -> list[Message]:
-        clauses = ["channel_id = ?"]
+        clauses = ["messages.channel_id = ?"]
         parameters: list[object] = [channel_id]
         if from_time is not None:
-            clauses.append("created_at >= ?")
+            clauses.append("messages.created_at >= ?")
             parameters.append(_to_text(from_time))
         if to_time is not None:
-            clauses.append("created_at <= ?")
+            clauses.append("messages.created_at <= ?")
             parameters.append(_to_text(to_time))
         parameters.append(limit)
         rows = self._connection.execute(
-            f"""SELECT * FROM messages
+            f"""SELECT messages.*, users.username AS sender_username
+                FROM messages JOIN users ON users.id = messages.sender_id
                 WHERE {' AND '.join(clauses)}
-                ORDER BY sequence DESC LIMIT ?""",
+                ORDER BY messages.sequence DESC LIMIT ?""",
             tuple(parameters),
         ).fetchall()
         return [_message_from_row(row) for row in reversed(rows)]

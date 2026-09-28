@@ -53,7 +53,7 @@ class ChatApplication:
         )
         candidate = Message(
             command.message_id, command.channel_id, command.sender_id, command.body,
-            command.created_at, command.client_request_id,
+            command.created_at, command.client_request_id, user.username,
         )
         created = False
         with self._factory(immediate=True) as unit_of_work:

@@ -55,6 +55,7 @@ class AuthorizedContextBuilder:
                 message if body == message.body else Message(
                     message.id, message.channel_id, message.sender_id, body,
                     message.created_at, message.client_request_id,
+                    message.sender_username,
                 )
             )
             remaining -= len(body)

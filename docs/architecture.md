@@ -50,6 +50,12 @@ Tkinter clients --> all user-facing RPCs on the chat server
 - **Client layer:** a lightweight Tkinter GUI uses background threads for live
   streams and inference so the desktop event loop stays responsive.
 
+Message rows continue to store the stable sender user ID. Message reads join
+the users table to add the sender's username to transport responses, while new
+live messages use the already-authenticated user's username. This avoids
+duplicating display data in the message table and lets the GUI show readable
+names for both history and live events.
+
 ## LLM trust and failure boundary
 
 Clients invoke `LLMService` on the chat-server address. Although the v1 request

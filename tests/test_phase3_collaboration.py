@@ -155,6 +155,10 @@ class Phase3CollaborationTests(unittest.TestCase):
             {message.message_id for message in first},
             {message.message_id for message in retries},
         )
+        self.assertEqual(
+            {message.sender_username for message in first},
+            {"alice", "bob", "charlie"},
+        )
 
         channel = self._channel("history-1", "alice")
         try:
@@ -179,6 +183,10 @@ class Phase3CollaborationTests(unittest.TestCase):
         combined = [*page1.messages, *page2.messages]
         self.assertEqual(len(combined), 3)
         self.assertEqual(len({message.message_id for message in combined}), 3)
+        self.assertEqual(
+            {message.sender_username for message in combined},
+            {"alice", "bob", "charlie"},
+        )
 
     def test_message_stream_delivers_new_message_and_rejects_non_member(self) -> None:
         channel = self._channel("stream-alice", "alice")
@@ -195,6 +203,7 @@ class Phase3CollaborationTests(unittest.TestCase):
             while event.type != chat_pb2.CHAT_EVENT_TYPE_MESSAGE:
                 event = next(call)
             self.assertEqual(event.message.message_id, sent.message_id)
+            self.assertEqual(event.message.sender_username, "bob")
             call.cancel()
         finally:
             channel.close()

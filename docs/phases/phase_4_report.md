@@ -3,7 +3,7 @@
 ## Status
 
 Complete. Phase 4 adds a separate, usable local-LLM process, authenticated AI
-features on the chat server, and a lightweight Tkinter demo client. All 44
+features on the chat server, and a lightweight Tkinter demo client. All 45
 automated tests pass, and the real Qwen GGUF was loaded for a manual inference
 smoke check. No Raft functionality was added.
 
@@ -152,8 +152,8 @@ stream, retrieve, upload, and download through the chat server.
 
 ## Tests performed
 
-Automated result on 2026-09-27: **44 tests passed** after adding the deadline
-test; `compileall` and `pip check` also passed. Coverage includes all earlier
+Latest automated result: **45 tests passed**; `compileall` and `pip check` also
+passed. Coverage includes all earlier
 Phase 0-3 behavior plus forged-context rejection, channel privacy, non-member
 denial, summary ranges, context limits, deterministic model calls, deadline
 fallback, offline fallback, and successful messaging during an LLM outage.
@@ -196,3 +196,12 @@ Phase 4 did not add Raft, leader/follower roles, elections, replicated logs,
 majority commit, cross-server message ordering, failover, node recovery,
 multi-chat-server deployment, file-byte replication, or LLM participation in
 durable state. Those remain Milestone 2 work and are not simulated or claimed.
+
+## Approved post-phase usability enhancement
+
+On 2026-09-28, the user approved an additive v1 contract extension so chat
+messages show usernames rather than internal user UUIDs. `MessageView` field 7
+contains `sender_username`; no existing field number or stored row changed.
+New messages use the authenticated username, persisted history joins the user
+record, and the Tkinter history/live-event views prefer the new field. Older
+clients remain wire-compatible and fall back to `sender_id`.

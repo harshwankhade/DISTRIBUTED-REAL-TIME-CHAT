@@ -141,7 +141,7 @@ class ChatWindow:
             return
         self._replace_messages("")
         for message in reversed(history):
-            self._append_message(message.sender_id, message.body)
+            self._append_message(message.sender_username or message.sender_id, message.body)
         self._start_stream(channel.channel_id)
 
     def _replace_messages(self, value: str) -> None:
@@ -170,7 +170,10 @@ class ChatWindow:
                         break
                     if event.type == chat_pb2.CHAT_EVENT_TYPE_MESSAGE:
                         self.root.after(
-                            0, self._append_message, event.message.sender_id, event.message.body
+                            0,
+                            self._append_message,
+                            event.message.sender_username or event.message.sender_id,
+                            event.message.body,
                         )
             except grpc.RpcError as exc:
                 if self.running and exc.code() != grpc.StatusCode.CANCELLED:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+from dataclasses import replace
 from datetime import timedelta
 from pathlib import Path
 
@@ -97,11 +98,12 @@ class SQLiteRepositoryTests(unittest.TestCase):
             unit_of_work.commit()
 
         with SQLiteUnitOfWorkFactory(Database(self.database_path))() as unit_of_work:
-            self.assertEqual(unit_of_work.messages.get(message.id), message)
+            enriched_message = replace(message, sender_username="alice")
+            self.assertEqual(unit_of_work.messages.get(message.id), enriched_message)
             self.assertEqual(unit_of_work.files.get(metadata.id), metadata)
             self.assertEqual(
                 unit_of_work.messages.get_by_client_request(user.id, "message-request-1"),
-                message,
+                enriched_message,
             )
 
 

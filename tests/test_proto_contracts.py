@@ -7,6 +7,7 @@ from proto.chat.v1 import (
     auth_pb2,
     channel_pb2,
     chat_pb2,
+    common_pb2,
     file_pb2,
     health_pb2,
     llm_pb2,
@@ -36,6 +37,10 @@ class ProtoContractTests(unittest.TestCase):
         ]
         self.assertFalse(method.client_streaming)
         self.assertTrue(method.server_streaming)
+
+    def test_message_view_includes_sender_username(self) -> None:
+        field = common_pb2.MessageView.DESCRIPTOR.fields_by_name["sender_username"]
+        self.assertEqual(field.number, 7)
 
     def test_file_contract_uses_chunked_streams(self) -> None:
         service = file_pb2.DESCRIPTOR.services_by_name["FileService"]

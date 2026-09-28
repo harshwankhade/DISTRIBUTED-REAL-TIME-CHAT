@@ -92,6 +92,7 @@ def _message_view(message: Message) -> common_pb2.MessageView:
         body=message.body,
         created_at=_timestamp(message.created_at),
         client_request_id=message.client_request_id,
+        sender_username=message.sender_username,
     )
 
 

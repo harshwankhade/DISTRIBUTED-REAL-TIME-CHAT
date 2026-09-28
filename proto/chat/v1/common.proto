@@ -45,6 +45,7 @@ message MessageView {
   string body = 4;
   google.protobuf.Timestamp created_at = 5;
   string client_request_id = 6;
+  string sender_username = 7;
 }
 
 message FileMetadataView {
@@ -57,4 +58,3 @@ message FileMetadataView {
   string checksum_sha256 = 7;
   google.protobuf.Timestamp created_at = 8;
 }
-

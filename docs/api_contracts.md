@@ -26,6 +26,11 @@ Request IDs are echoed in response status or trailing metadata where possible.
 Clients must set deadlines. The Phase 1 smoke client uses
 `RPC_TIMEOUT_SECONDS`; later operations may choose operation-specific deadlines.
 
+`MessageView` carries both the stable `sender_id` and the display-oriented
+`sender_username`. The username is an additive field (field number 7), so older
+v1 clients continue to parse messages and newer clients can avoid displaying
+internal UUIDs. The server remains authoritative for both values.
+
 ## Service ownership
 
 ### Chat application process
