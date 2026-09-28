@@ -81,6 +81,7 @@ def _channel_summary(channel: Channel) -> common_pb2.ChannelSummary:
         channel_id=channel.id,
         name=channel.name,
         archived=channel.is_archived,
+        owner_id=channel.created_by,
     )
 
 
@@ -177,6 +178,37 @@ class AuthService(auth_pb2_grpc.AuthServiceServicer):
             status=_ok_status(request_id, "login successful"),
             token=result.token,
             expires_at=_timestamp(result.expires_at),
+            user=_user_summary(result.user),
+        )
+
+    def Register(self, request: auth_pb2.RegisterRequest,
+                 context: grpc.ServicerContext) -> auth_pb2.LoginResponse:
+        request_id = require_request_id(request.context, context)
+        require_text(request.username, "username", request_id, context)
+        require_text(request.password, "password", request_id, context)
+        try:
+            result = self._application.register(
+                request.username, request.password, request_id=request_id
+            )
+        except ApplicationError as error:
+            abort_application_error(context, error, request_id)
+        return auth_pb2.LoginResponse(
+            status=_ok_status(request_id, "registered"),
+            token=result.token,
+            expires_at=_timestamp(result.expires_at),
+            user=_user_summary(result.user),
+        )
+
+    def ListUsers(self, request: auth_pb2.ListUsersRequest,
+                  context: grpc.ServicerContext) -> auth_pb2.ListUsersResponse:
+        request_id = require_request_id(request.context, context)
+        try:
+            users = self._application.list_users(get_auth_token(), request_id=request_id)
+        except ApplicationError as error:
+            abort_application_error(context, error, request_id)
+        return auth_pb2.ListUsersResponse(
+            status=_ok_status(request_id),
+            users=[_user_summary(user) for user in users],
         )
 
     def Logout(
@@ -207,7 +239,11 @@ class ChannelService(channel_pb2_grpc.ChannelServiceServicer):
             abort_application_error(context, error, request_id)
         return channel_pb2.ChannelResponse(
             status=_ok_status(request_id, "channel created"),
-            channel=_channel_summary(channel),
+            channel=common_pb2.ChannelSummary(
+                channel_id=channel.id, name=channel.name,
+                archived=channel.is_archived, owner_id=channel.created_by,
+                is_member=True,
+            ),
         )
 
     def ListChannels(
@@ -227,7 +263,11 @@ class ChannelService(channel_pb2_grpc.ChannelServiceServicer):
             abort_application_error(context, error, request_id)
         return channel_pb2.ListChannelsResponse(
             status=_ok_status(request_id),
-            channels=[_channel_summary(channel) for channel in page.channels],
+            channels=[common_pb2.ChannelSummary(
+                channel_id=channel.id, name=channel.name,
+                archived=channel.is_archived, owner_id=channel.created_by,
+                is_member=channel.id in page.memberships,
+            ) for channel in page.channels],
             next_page_token=page.next_page_token,
         )
 
@@ -242,7 +282,7 @@ class ChannelService(channel_pb2_grpc.ChannelServiceServicer):
             )
         except ApplicationError as error:
             abort_application_error(context, error, request_id)
-        return common_pb2.EmptyResponse(status=_ok_status(request_id, "channel joined"))
+        return common_pb2.EmptyResponse(status=_ok_status(request_id, "join request pending owner approval"))
 
     def LeaveChannel(
         self, request: channel_pb2.ChannelMembershipRequest, context: grpc.ServicerContext
@@ -256,6 +296,78 @@ class ChannelService(channel_pb2_grpc.ChannelServiceServicer):
         except ApplicationError as error:
             abort_application_error(context, error, request_id)
         return common_pb2.EmptyResponse(status=_ok_status(request_id, "channel left"))
+
+    def ListJoinRequests(self, request: channel_pb2.ListJoinRequestsRequest,
+                         context: grpc.ServicerContext) -> channel_pb2.ListJoinRequestsResponse:
+        request_id = require_request_id(request.context, context)
+        require_text(request.channel_id, "channel_id", request_id, context)
+        try:
+            pending = self._application.list_join_requests(
+                get_auth_token(), request.channel_id, request_id=request_id
+            )
+        except ApplicationError as error:
+            abort_application_error(context, error, request_id)
+        return channel_pb2.ListJoinRequestsResponse(
+            status=_ok_status(request_id),
+            requests=[channel_pb2.JoinRequestView(
+                request_id=join_id, channel_id=request.channel_id,
+                user=_user_summary(user), status="pending"
+            ) for join_id, user in pending],
+        )
+
+    def DecideJoinRequest(self, request: channel_pb2.DecideJoinRequestRequest,
+                          context: grpc.ServicerContext) -> common_pb2.EmptyResponse:
+        request_id = require_request_id(request.context, context)
+        require_text(request.join_request_id, "join_request_id", request_id, context)
+        try:
+            self._application.decide_join_request(
+                get_auth_token(), request.join_request_id, request.approve,
+                request_id=request_id,
+            )
+        except ApplicationError as error:
+            abort_application_error(context, error, request_id)
+        return common_pb2.EmptyResponse(status=_ok_status(request_id, "join request decided"))
+
+    def ManageMember(self, request: channel_pb2.ManageMemberRequest,
+                     context: grpc.ServicerContext) -> common_pb2.EmptyResponse:
+        request_id = require_request_id(request.context, context)
+        require_text(request.channel_id, "channel_id", request_id, context)
+        require_text(request.user_id, "user_id", request_id, context)
+        try:
+            self._application.manage_member(
+                get_auth_token(), request.channel_id, request.user_id,
+                request.add, request_id=request_id,
+            )
+        except ApplicationError as error:
+            abort_application_error(context, error, request_id)
+        return common_pb2.EmptyResponse(status=_ok_status(request_id, "membership updated"))
+
+    def ListMembers(self, request: channel_pb2.ListMembersRequest,
+                    context: grpc.ServicerContext) -> channel_pb2.ListMembersResponse:
+        request_id = require_request_id(request.context, context)
+        require_text(request.channel_id, "channel_id", request_id, context)
+        try:
+            members = self._application.list_members(
+                get_auth_token(), request.channel_id, request_id=request_id
+            )
+        except ApplicationError as error:
+            abort_application_error(context, error, request_id)
+        return channel_pb2.ListMembersResponse(
+            status=_ok_status(request_id),
+            members=[_user_summary(user) for user in members],
+        )
+
+    def DeleteChannel(self, request: channel_pb2.ChannelMembershipRequest,
+                      context: grpc.ServicerContext) -> common_pb2.EmptyResponse:
+        request_id = require_request_id(request.context, context)
+        require_text(request.channel_id, "channel_id", request_id, context)
+        try:
+            self._application.delete_channel(
+                get_auth_token(), request.channel_id, request_id=request_id
+            )
+        except ApplicationError as error:
+            abort_application_error(context, error, request_id)
+        return common_pb2.EmptyResponse(status=_ok_status(request_id, "channel deleted"))
 
 
 class ChatService(chat_pb2_grpc.ChatServiceServicer):
@@ -310,9 +422,10 @@ class ChatService(chat_pb2_grpc.ChatServiceServicer):
         request_id = require_request_id(request.context, context)
         if any(not channel_id.strip() for channel_id in request.channel_ids):
             abort_invalid(context, request_id, "channel_ids must not contain empty values")
+        token = get_auth_token()
         try:
             channel_ids = self._application.authorize_subscription(
-                get_auth_token(), list(request.channel_ids), request_id=request_id
+                token, list(request.channel_ids), request_id=request_id
             )
         except ApplicationError as error:
             abort_application_error(context, error, request_id)
@@ -322,6 +435,14 @@ class ChatService(chat_pb2_grpc.ChatServiceServicer):
         try:
             while context.is_active():
                 event = subscription.get(self._keepalive_seconds)
+                # Membership can be revoked after the stream starts. Recheck
+                # before every emitted event (including idle keepalives).
+                try:
+                    self._application.authorize_subscription(
+                        token, list(channel_ids), request_id=request_id
+                    )
+                except ApplicationError as error:
+                    abort_application_error(context, error, request_id)
                 if event is None:
                     yield chat_pb2.ChatEvent(
                         event_id=new_request_id(),

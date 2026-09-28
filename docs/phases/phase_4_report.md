@@ -1,5 +1,10 @@
 # Phase 4 - Separate LLM Service and Milestone 1 Demo
 
+> Historical report: after Phase 4, the user approved replacing the global
+> administrator and GUI admin setup with self-registration and per-channel
+> owners. See [channel-owner enhancement](channel_owner_enhancement.md) for the
+> current behavior; admin references below describe the original Phase 4 build.
+
 ## Status
 
 Complete. Phase 4 adds a separate, usable local-LLM process, authenticated AI

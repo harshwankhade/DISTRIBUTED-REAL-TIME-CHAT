@@ -3,17 +3,17 @@
 ## Purpose
 
 The final product is a distributed real-time chat and collaboration system.
-This document freezes the product expectations and cross-cutting conventions
-needed for Phase 0. It does not claim that the features are implemented.
+This document began as the Phase 0 requirements and records the current
+owner-based permission policy approved after Milestone 1.
 
 ## Users and permissions
 
 ### Normal user stories
 
-A normal user will eventually be able to:
+A registered user can:
 
-- Log in, log out, and use an expiring session.
-- List channels they may discover and join or leave permitted channels.
+- Register, log in, log out, and use an expiring session.
+- See registered users and discover channels; request to join a channel.
 - Read history and send messages only in channels they belong to.
 - Receive live message and presence events for authorized channels.
 - Upload and download permitted files without reading another channel's files.
@@ -21,39 +21,41 @@ A normal user will eventually be able to:
 - Request smart replies, summaries, and suggestions using only conversation
   content they are authorized to read.
 
-A normal user must not manage other accounts, change another user's role,
-archive channels without permission, or add/remove arbitrary members.
+A user cannot change another account, read a channel before approval, or manage
+membership in a channel they do not own.
 
-### Administrator stories
+### Channel owner stories
 
-An administrator will eventually be able to:
+The user who creates a channel becomes its owner and first member. The owner can:
 
-- Create users and enable or disable accounts.
-- Assign allowed roles according to the chosen security policy.
-- Create and archive channels.
-- Add or remove channel members.
-- Inspect safe audit events needed to explain administrative changes.
+- See pending join requests and approve or reject them.
+- Add or remove members, except that the owner cannot remove themself.
+- Permanently delete their own channel, including its memberships, messages,
+  pending requests, and file records.
 
-Administrators remain subject to authentication, validation, audit, and privacy
-rules. Admin status is not permission to bypass service boundaries.
+The separate global administrator account and its RPC service are retired.
+Ordinary users can create their own channels; creating one does not grant
+privileges over other channels or users.
 
 ## Permission matrix
 
-| Capability | Normal user | Administrator |
+| Capability | Registered user | Channel owner (own channel) |
 |---|---:|---:|
-| Log in/out | Own account | Own account |
-| List/join/leave channels | Allowed channels / self | Allowed channels / self |
-| Read/send channel content | Member only | Member only by default |
-| Upload/download files | Member only | Member only by default |
+| Register/log in/out | Own account | Own account |
+| List/request/leave channels | Yes / cannot leave owned channel | Same |
+| Read/send channel content | Member only | Member only |
+| Upload/download files | Member only | Member only |
 | Request LLM assistance | Authorized context only | Authorized context only |
-| Create/archive channels | No | Yes |
-| Add/remove members | No | Yes |
-| Enable/disable users | No | Yes |
-| Change user roles | No | Yes |
+| Create channel | Yes, becomes owner | Yes |
+| View channel roster | Member only | Yes |
+| Approve join or manage members | No | Yes |
+| Delete channel and its history | No | Yes |
+| Enable/disable users or change roles | No | No |
 
-Whether administrators may automatically read every channel is deliberately
-answered **no by default**. A later phase may refine this policy only with an
-explicit requirement and privacy impact explanation.
+There is no cross-channel override: ownership of one channel grants no access
+to any other channel. Channel archiving is not exposed in the current UI/API.
+Deleting a channel does not delete uploaded bytes from local disk; those bytes
+become unreferenced and inaccessible through the app.
 
 ## Data ownership and persistence
 
@@ -84,9 +86,9 @@ Phase 0 defines these boundaries but does not create a schema or store data.
 Phase 1 provides client/server metadata interceptors. Business-level duplicate
 detection is still deferred until the applicable feature phase.
 
-Phase 2 validates bearer tokens against persisted sessions. Tokens are revoked
-on logout and when an administrator disables a user, and expired tokens are
-rejected.
+Bearer tokens are validated against persisted sessions. Tokens are revoked on
+logout, and expired or disabled-account sessions are rejected. Disabling an
+account is no longer available through the public RPC surface.
 
 ## Timestamp convention
 

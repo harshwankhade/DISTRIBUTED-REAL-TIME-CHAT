@@ -55,6 +55,31 @@ class ChannelServiceStub:
                 request_serializer=proto_dot_chat_dot_v1_dot_channel__pb2.ChannelMembershipRequest.SerializeToString,
                 response_deserializer=proto_dot_chat_dot_v1_dot_common__pb2.EmptyResponse.FromString,
                 _registered_method=True)
+        self.ListJoinRequests = channel.unary_unary(
+                '/distributed_chat.v1.ChannelService/ListJoinRequests',
+                request_serializer=proto_dot_chat_dot_v1_dot_channel__pb2.ListJoinRequestsRequest.SerializeToString,
+                response_deserializer=proto_dot_chat_dot_v1_dot_channel__pb2.ListJoinRequestsResponse.FromString,
+                _registered_method=True)
+        self.DecideJoinRequest = channel.unary_unary(
+                '/distributed_chat.v1.ChannelService/DecideJoinRequest',
+                request_serializer=proto_dot_chat_dot_v1_dot_channel__pb2.DecideJoinRequestRequest.SerializeToString,
+                response_deserializer=proto_dot_chat_dot_v1_dot_common__pb2.EmptyResponse.FromString,
+                _registered_method=True)
+        self.ManageMember = channel.unary_unary(
+                '/distributed_chat.v1.ChannelService/ManageMember',
+                request_serializer=proto_dot_chat_dot_v1_dot_channel__pb2.ManageMemberRequest.SerializeToString,
+                response_deserializer=proto_dot_chat_dot_v1_dot_common__pb2.EmptyResponse.FromString,
+                _registered_method=True)
+        self.ListMembers = channel.unary_unary(
+                '/distributed_chat.v1.ChannelService/ListMembers',
+                request_serializer=proto_dot_chat_dot_v1_dot_channel__pb2.ListMembersRequest.SerializeToString,
+                response_deserializer=proto_dot_chat_dot_v1_dot_channel__pb2.ListMembersResponse.FromString,
+                _registered_method=True)
+        self.DeleteChannel = channel.unary_unary(
+                '/distributed_chat.v1.ChannelService/DeleteChannel',
+                request_serializer=proto_dot_chat_dot_v1_dot_channel__pb2.ChannelMembershipRequest.SerializeToString,
+                response_deserializer=proto_dot_chat_dot_v1_dot_common__pb2.EmptyResponse.FromString,
+                _registered_method=True)
 
 
 class ChannelServiceServicer:
@@ -84,6 +109,36 @@ class ChannelServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def ListJoinRequests(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def DecideJoinRequest(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ManageMember(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListMembers(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def DeleteChannel(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_ChannelServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -104,6 +159,31 @@ def add_ChannelServiceServicer_to_server(servicer, server):
             ),
             'LeaveChannel': grpc.unary_unary_rpc_method_handler(
                     servicer.LeaveChannel,
+                    request_deserializer=proto_dot_chat_dot_v1_dot_channel__pb2.ChannelMembershipRequest.FromString,
+                    response_serializer=proto_dot_chat_dot_v1_dot_common__pb2.EmptyResponse.SerializeToString,
+            ),
+            'ListJoinRequests': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListJoinRequests,
+                    request_deserializer=proto_dot_chat_dot_v1_dot_channel__pb2.ListJoinRequestsRequest.FromString,
+                    response_serializer=proto_dot_chat_dot_v1_dot_channel__pb2.ListJoinRequestsResponse.SerializeToString,
+            ),
+            'DecideJoinRequest': grpc.unary_unary_rpc_method_handler(
+                    servicer.DecideJoinRequest,
+                    request_deserializer=proto_dot_chat_dot_v1_dot_channel__pb2.DecideJoinRequestRequest.FromString,
+                    response_serializer=proto_dot_chat_dot_v1_dot_common__pb2.EmptyResponse.SerializeToString,
+            ),
+            'ManageMember': grpc.unary_unary_rpc_method_handler(
+                    servicer.ManageMember,
+                    request_deserializer=proto_dot_chat_dot_v1_dot_channel__pb2.ManageMemberRequest.FromString,
+                    response_serializer=proto_dot_chat_dot_v1_dot_common__pb2.EmptyResponse.SerializeToString,
+            ),
+            'ListMembers': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListMembers,
+                    request_deserializer=proto_dot_chat_dot_v1_dot_channel__pb2.ListMembersRequest.FromString,
+                    response_serializer=proto_dot_chat_dot_v1_dot_channel__pb2.ListMembersResponse.SerializeToString,
+            ),
+            'DeleteChannel': grpc.unary_unary_rpc_method_handler(
+                    servicer.DeleteChannel,
                     request_deserializer=proto_dot_chat_dot_v1_dot_channel__pb2.ChannelMembershipRequest.FromString,
                     response_serializer=proto_dot_chat_dot_v1_dot_common__pb2.EmptyResponse.SerializeToString,
             ),
@@ -214,6 +294,141 @@ class ChannelService:
             request,
             target,
             '/distributed_chat.v1.ChannelService/LeaveChannel',
+            proto_dot_chat_dot_v1_dot_channel__pb2.ChannelMembershipRequest.SerializeToString,
+            proto_dot_chat_dot_v1_dot_common__pb2.EmptyResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListJoinRequests(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/distributed_chat.v1.ChannelService/ListJoinRequests',
+            proto_dot_chat_dot_v1_dot_channel__pb2.ListJoinRequestsRequest.SerializeToString,
+            proto_dot_chat_dot_v1_dot_channel__pb2.ListJoinRequestsResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def DecideJoinRequest(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/distributed_chat.v1.ChannelService/DecideJoinRequest',
+            proto_dot_chat_dot_v1_dot_channel__pb2.DecideJoinRequestRequest.SerializeToString,
+            proto_dot_chat_dot_v1_dot_common__pb2.EmptyResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ManageMember(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/distributed_chat.v1.ChannelService/ManageMember',
+            proto_dot_chat_dot_v1_dot_channel__pb2.ManageMemberRequest.SerializeToString,
+            proto_dot_chat_dot_v1_dot_common__pb2.EmptyResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListMembers(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/distributed_chat.v1.ChannelService/ListMembers',
+            proto_dot_chat_dot_v1_dot_channel__pb2.ListMembersRequest.SerializeToString,
+            proto_dot_chat_dot_v1_dot_channel__pb2.ListMembersResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def DeleteChannel(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/distributed_chat.v1.ChannelService/DeleteChannel',
             proto_dot_chat_dot_v1_dot_channel__pb2.ChannelMembershipRequest.SerializeToString,
             proto_dot_chat_dot_v1_dot_common__pb2.EmptyResponse.FromString,
             options,

@@ -13,12 +13,10 @@ try {
     & $python -m server.migrate
     if ($LASTEXITCODE -ne 0) { throw "Database migration failed." }
 
-    if ($env:SEED_ADMIN_PASSWORD -or (Select-String -Path ".env" -Pattern '^SEED_ADMIN_PASSWORD=.+$' -Quiet -ErrorAction SilentlyContinue)) {
-        & $python -m server.seed
-        if ($LASTEXITCODE -ne 0) { throw "Database seed failed." }
-    } else {
-        Write-Host "Seed skipped: configure passwords in .env, then run scripts\seed_data.cmd."
-    }
+    & $python -m server.retire_legacy_admin
+    if ($LASTEXITCODE -ne 0) { throw "Legacy administrator cleanup failed." }
+
+    Write-Host "Users can register in the Tkinter client. No administrator seed is required."
 
     $llm = Start-Process -FilePath $python -ArgumentList "-m", "llm_server" `
         -WorkingDirectory $projectRoot -WindowStyle Hidden -PassThru `

@@ -26,7 +26,7 @@ class SQLiteRepositoryTests(unittest.TestCase):
     def test_migration_is_repeatable(self) -> None:
         self.assertEqual(
             apply_migrations(self.database),
-            ["001_initial.sql", "002_messaging_files.sql"],
+            ["001_initial.sql", "002_messaging_files.sql", "003_join_requests.sql"],
         )
         self.assertEqual(apply_migrations(self.database), [])
         connection = self.database.connect()

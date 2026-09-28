@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+import re
+import sqlite3
 from datetime import datetime, timedelta
 from uuid import uuid4
 
@@ -13,6 +15,8 @@ from domain.models import Session, User, UserRole, UserStatus
 from server.repositories.sqlite import SQLiteUnitOfWorkFactory
 from server.security.passwords import hash_password, verify_password
 from server.security.tokens import generate_session_token, hash_session_token
+
+USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9_.-]{3,64}$")
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,6 +40,39 @@ class AuthApplication:
         self._clock = clock
         self._token_generator = token_generator
         self._dummy_password_hash = hash_password("invalid-password-placeholder")
+
+    def register(self, username: str, password: str, *, request_id: str) -> LoginResult:
+        normalized = username.strip()
+        if not USERNAME_PATTERN.fullmatch(normalized):
+            raise ApplicationError(
+                ErrorCode.INVALID_ARGUMENT,
+                "username must be 3-64 letters, numbers, dots, underscores, or hyphens",
+                request_id,
+            )
+        try:
+            password_hash = hash_password(password)
+        except ValueError as exc:
+            raise ApplicationError(ErrorCode.INVALID_ARGUMENT, str(exc), request_id) from exc
+        now = self._clock()
+        user = User(str(uuid4()), normalized, UserRole.USER, UserStatus.ACTIVE, now)
+        raw_token = self._token_generator()
+        session = Session(
+            str(uuid4()), user.id, hash_session_token(raw_token), now,
+            now + self._session_ttl,
+        )
+        try:
+            with self._unit_of_work_factory(immediate=True) as unit_of_work:
+                unit_of_work.users.add(user, password_hash)
+                unit_of_work.sessions.add(session)
+                unit_of_work.commit()
+        except sqlite3.IntegrityError as exc:
+            raise ApplicationError(ErrorCode.ALREADY_EXISTS, "username already exists", request_id) from exc
+        return LoginResult(raw_token, session.expires_at, user)
+
+    def list_users(self, token: str | None, *, request_id: str) -> list[User]:
+        self.authenticate(token, request_id=request_id)
+        with self._unit_of_work_factory() as unit_of_work:
+            return unit_of_work.users.list_active()
 
     def login(self, username: str, password: str, *, request_id: str) -> LoginResult:
         normalized_username = username.strip()
@@ -62,6 +99,12 @@ class AuthApplication:
                 raise ApplicationError(
                     ErrorCode.PERMISSION_DENIED,
                     "account is disabled",
+                    request_id,
+                )
+            if stored.user.role is UserRole.ADMIN:
+                raise ApplicationError(
+                    ErrorCode.PERMISSION_DENIED,
+                    "legacy administrator account is retired",
                     request_id,
                 )
 
@@ -107,6 +150,8 @@ class AuthApplication:
                 raise ApplicationError(
                     ErrorCode.PERMISSION_DENIED, "account is disabled", request_id
                 )
+            if stored.user.role is UserRole.ADMIN:
+                raise ApplicationError(ErrorCode.PERMISSION_DENIED, "legacy administrator account is retired", request_id)
             return stored.user
 
     def require_admin(self, token: str | None, *, request_id: str) -> User:
@@ -129,4 +174,3 @@ class AuthApplication:
                     ErrorCode.UNAUTHENTICATED, "session is invalid", request_id
                 )
             unit_of_work.commit()
-

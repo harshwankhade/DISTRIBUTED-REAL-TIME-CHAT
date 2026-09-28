@@ -19,6 +19,45 @@ def _error_text(exc: Exception) -> str:
     return str(exc)
 
 
+def _owned_channels(channels, owner_id: str):
+    return sorted(
+        (channel for channel in channels if channel.owner_id == owner_id),
+        key=lambda channel: channel.name.casefold(),
+    )
+
+
+class _ChannelPicker(simpledialog.Dialog):
+    """Modal dropdown for choosing one of the signed-in user's channels."""
+
+    def __init__(self, parent: tk.Tk, username: str, channels) -> None:
+        self.username = username
+        self.channels = channels
+        self.result = None
+        super().__init__(parent, title="Add user to channel")
+
+    def body(self, master):
+        ttk.Label(master, text=f"Choose a channel to add {self.username}:").pack(
+            anchor="w", pady=(0, 8)
+        )
+        self.choice = ttk.Combobox(
+            master, values=[channel.name for channel in self.channels],
+            state="readonly", width=38,
+        )
+        self.choice.pack(fill="x")
+        return self.choice
+
+    def validate(self) -> bool:
+        if self.choice.current() < 0:
+            messagebox.showwarning(
+                "Select channel", "Choose a channel from the dropdown.", parent=self
+            )
+            return False
+        return True
+
+    def apply(self) -> None:
+        self.result = self.channels[self.choice.current()]
+
+
 class ChatWindow:
     def __init__(self, api: ChatApi, *, title: str) -> None:
         self.api = api
@@ -27,6 +66,9 @@ class ChatWindow:
         self.root.geometry("1000x680")
         self.root.protocol("WM_DELETE_WINDOW", self.close)
         self.channels: list[object] = []
+        self.users: list[object] = []
+        self.current_user_id = ""
+        self.seen_join_requests: set[str] = set()
         self.selected_channel_id: str | None = None
         self.stream_call = None
         self.running = True
@@ -45,9 +87,8 @@ class ChatWindow:
         self.username.grid(row=1, column=1, pady=5)
         self.password.grid(row=2, column=1, pady=5)
         self.password.bind("<Return>", lambda _event: self._login())
-        ttk.Button(frame, text="Log in", command=self._login).grid(
-            row=3, column=0, columnspan=2, pady=15
-        )
+        ttk.Button(frame, text="Log in", command=self._login).grid(row=3, column=0, pady=15)
+        ttk.Button(frame, text="Register", command=self._register).grid(row=3, column=1, pady=15)
         self.login_frame = frame
 
     def _login(self) -> None:
@@ -56,15 +97,32 @@ class ChatWindow:
             messagebox.showerror("Login", "Enter username and password.")
             return
         try:
-            self.api.login(username, password)
+            user = self.api.login(username, password)
         except Exception as exc:
             messagebox.showerror("Login failed", _error_text(exc))
             return
-        self.current_username = username
+        self._signed_in(user)
+
+    def _register(self) -> None:
+        username, password = self.username.get().strip(), self.password.get()
+        if not username or not password:
+            messagebox.showerror("Register", "Enter a username and password.")
+            return
+        try:
+            user = self.api.register(username, password)
+        except Exception as exc:
+            messagebox.showerror("Registration failed", _error_text(exc))
+            return
+        self._signed_in(user)
+
+    def _signed_in(self, user) -> None:
+        self.current_user_id = user.user_id
+        self.current_username = user.username
         self.login_frame.destroy()
         self._build_main()
         self._refresh_channels()
         self._schedule_heartbeat()
+        self._poll_join_requests()
 
     def _build_main(self) -> None:
         outer = ttk.Frame(self.root, padding=8)
@@ -72,24 +130,39 @@ class ChatWindow:
         left = ttk.Frame(outer)
         left.pack(side="left", fill="y", padx=(0, 8))
         ttk.Label(left, text=f"Signed in: {self.current_username}").pack(anchor="w")
-        self.channel_list = tk.Listbox(left, width=28, height=24)
+        ttk.Label(left, text="Registered users").pack(anchor="w", pady=(8, 0))
+        self.user_list = tk.Listbox(left, width=28, height=7)
+        self.user_list.pack(fill="x", pady=(2, 6))
+        ttk.Separator(left, orient="horizontal").pack(fill="x", pady=5)
+        ttk.Label(left, text="Channels").pack(anchor="w")
+        self.channel_list = tk.Listbox(left, width=28, height=15)
         self.channel_list.pack(fill="y", expand=True, pady=8)
         self.channel_list.bind("<<ListboxSelect>>", self._select_channel)
         for label, command in (
             ("Refresh", self._refresh_channels),
-            ("Join selected", self._join),
+            ("Request to join", self._join),
             ("Leave selected", self._leave),
             ("Create channel", self._create_channel),
-            ("Admin: create user", self._create_user),
+            ("Owner: add selected user", self._add_selected_user),
         ):
             ttk.Button(left, text=label, command=command).pack(fill="x", pady=2)
+        self.delete_channel_button = ttk.Button(
+            left, text="Owner: delete channel", command=self._delete_channel
+        )
 
         right = ttk.Frame(outer)
         right.pack(side="right", fill="both", expand=True)
         self.heading = ttk.Label(right, text="Select a channel", font=("Segoe UI", 14, "bold"))
         self.heading.pack(anchor="w")
-        self.messages = tk.Text(right, state="disabled", wrap="word")
-        self.messages.pack(fill="both", expand=True, pady=8)
+        content = ttk.Frame(right)
+        content.pack(fill="both", expand=True, pady=8)
+        members_panel = ttk.Frame(content)
+        members_panel.pack(side="right", fill="y", padx=(8, 0))
+        ttk.Label(members_panel, text="Channel members").pack(anchor="w")
+        self.members_text = tk.Text(members_panel, width=25, state="disabled", wrap="none")
+        self.members_text.pack(fill="y", expand=True)
+        self.messages = tk.Text(content, state="disabled", wrap="word")
+        self.messages.pack(side="left", fill="both", expand=True)
         compose = ttk.Frame(right)
         compose.pack(fill="x")
         self.message_entry = ttk.Entry(compose)
@@ -118,11 +191,30 @@ class ChatWindow:
 
     def _refresh_channels(self) -> None:
         try:
+            selected_user = (
+                self.users[self.user_list.curselection()[0]].user_id
+                if self.user_list.curselection() else None
+            )
+            selected_channel_id = self.selected_channel_id
+            self.users = list(self.api.list_users())
+            self.user_list.delete(0, "end")
+            for index, user in enumerate(self.users):
+                self.user_list.insert("end", user.username)
+                if user.user_id == selected_user:
+                    self.user_list.selection_set(index)
             self.channels = list(self.api.list_channels())
             self.channel_list.delete(0, "end")
-            for channel in self.channels:
-                suffix = " [archived]" if channel.archived else ""
+            selected_found = False
+            for index, channel in enumerate(self.channels):
+                suffix = " [owner]" if channel.owner_id == self.current_user_id else (
+                    " [member]" if channel.is_member else " [join required]"
+                )
                 self.channel_list.insert("end", f"{channel.name}{suffix}")
+                if channel.channel_id == selected_channel_id:
+                    self.channel_list.selection_set(index)
+                    selected_found = True
+            if selected_channel_id and not selected_found:
+                self._clear_selected_channel()
             self._set_status(f"Loaded {len(self.channels)} channel(s)")
         except Exception as exc:
             messagebox.showerror("Channels", _error_text(exc))
@@ -133,6 +225,17 @@ class ChatWindow:
             return
         self.selected_channel_id = channel.channel_id
         self.heading.configure(text=channel.name)
+        if channel.owner_id == self.current_user_id:
+            self.delete_channel_button.pack(fill="x", pady=2)
+        else:
+            self.delete_channel_button.pack_forget()
+        if not channel.is_member:
+            if self.stream_call is not None:
+                self.stream_call.cancel()
+            self._replace_messages("Request to join. The channel owner must approve you before you can chat.\n")
+            self._replace_members("Join to view members.\n")
+            return
+        self._refresh_members(channel)
         try:
             history = list(self.api.history(channel.channel_id))
             files = list(self.api.list_files(channel.channel_id))
@@ -157,6 +260,74 @@ class ChatWindow:
             else:
                 self._append_file(item)
         self._start_stream(channel.channel_id)
+
+    def _clear_selected_channel(self) -> None:
+        self.selected_channel_id = None
+        if self.stream_call is not None:
+            self.stream_call.cancel()
+            self.stream_call = None
+        self.delete_channel_button.pack_forget()
+        self.heading.configure(text="Select a channel")
+        self._replace_messages("")
+        self._replace_members("")
+
+    def _replace_members(self, value: str) -> None:
+        self.members_text.configure(state="normal")
+        self.members_text.delete("1.0", "end")
+        self.members_text.insert("end", value)
+        self.members_text.configure(state="disabled")
+
+    def _refresh_members(self, channel) -> None:
+        try:
+            members = self.api.list_members(channel.channel_id)
+        except Exception as exc:
+            self._replace_members("Members unavailable.\n")
+            self._set_status(_error_text(exc))
+            return
+        self.members_text.configure(state="normal")
+        self.members_text.delete("1.0", "end")
+        for member in members:
+            self.members_text.insert("end", member.username)
+            if channel.owner_id == self.current_user_id and member.user_id != self.current_user_id:
+                button = ttk.Button(
+                    self.members_text, text="Remove",
+                    command=lambda item=member: self._remove_member(channel, item),
+                )
+                self.members_text.insert("end", "  ")
+                self.members_text.window_create("end", window=button)
+            self.members_text.insert("end", "\n")
+        self.members_text.configure(state="disabled")
+
+    def _remove_member(self, channel, member) -> None:
+        if not messagebox.askyesno(
+            "Remove member", f"Remove {member.username} from {channel.name}?", parent=self.root
+        ):
+            return
+        try:
+            self.api.manage_member(channel.channel_id, member.user_id, False)
+            self._refresh_members(channel)
+            self._set_status(f"Removed {member.username} from {channel.name}")
+        except Exception as exc:
+            messagebox.showerror("Remove member", _error_text(exc))
+
+    def _delete_channel(self) -> None:
+        channel = self._selected_list_channel()
+        if channel is None or channel.owner_id != self.current_user_id:
+            return
+        if not messagebox.askyesno(
+            "Delete channel",
+            f"Permanently delete {channel.name}, all its members, messages, and file records?\n"
+            "Uploaded file bytes will remain on disk but cannot be accessed in the app.",
+            parent=self.root,
+        ):
+            return
+        try:
+            self.api.delete_channel(channel.channel_id)
+            self._clear_selected_channel()
+            self._refresh_channels()
+            self._set_status(f"Deleted {channel.name}")
+        except Exception as exc:
+            messagebox.showerror("Delete channel", _error_text(exc))
 
     def _replace_messages(self, value: str) -> None:
         self.messages.configure(state="normal")
@@ -226,9 +397,11 @@ class ChatWindow:
         if channel is None:
             return
         try:
+            if channel.is_member:
+                self._set_status(f"Already a member of {channel.name}")
+                return
             self.api.join_channel(channel.channel_id)
-            self._set_status(f"Joined {channel.name}")
-            self._select_channel()
+            self._set_status(f"Request sent to the owner of {channel.name}")
         except Exception as exc:
             messagebox.showerror("Join failed", _error_text(exc))
 
@@ -239,6 +412,7 @@ class ChatWindow:
         try:
             self.api.leave_channel(channel.channel_id)
             self._set_status(f"Left {channel.name}")
+            self._refresh_channels()
         except Exception as exc:
             messagebox.showerror("Leave failed", _error_text(exc))
 
@@ -252,21 +426,61 @@ class ChatWindow:
         except Exception as exc:
             messagebox.showerror("Create channel", _error_text(exc))
 
-    def _create_user(self) -> None:
-        username = simpledialog.askstring("Admin", "New username:", parent=self.root)
-        if not username:
+    def _add_selected_user(self) -> None:
+        selection = self.user_list.curselection()
+        if not selection:
+            messagebox.showinfo("Membership", "Select a registered user first.")
             return
-        password = simpledialog.askstring("Admin", "Temporary password:", show="*", parent=self.root)
-        if not password:
+        user = self.users[selection[0]]
+        try:
+            owned = _owned_channels(self.api.list_channels(), self.current_user_id)
+        except Exception as exc:
+            messagebox.showerror("Membership", _error_text(exc))
             return
-        role = simpledialog.askstring("Admin", "Role (user/admin):", initialvalue="user", parent=self.root)
-        if not role:
+        if not owned:
+            messagebox.showinfo("Membership", "Create a channel first; you do not own any channels.")
+            return
+        channel = _ChannelPicker(self.root, user.username, owned).result
+        if channel is None:
             return
         try:
-            user = self.api.create_user(username, password, role)
-            self._set_status(f"Created {user.username} ({user.role})")
+            if any(member.user_id == user.user_id for member in self.api.list_members(channel.channel_id)):
+                messagebox.showinfo("Membership", f"{user.username} is already in {channel.name}.")
+                return
+            self.api.manage_member(channel.channel_id, user.user_id, True)
+            if self.selected_channel_id == channel.channel_id:
+                self._refresh_members(channel)
+            self._set_status(f"Added {user.username} to {channel.name}")
         except Exception as exc:
-            messagebox.showerror("Create user", _error_text(exc))
+            messagebox.showerror("Membership", _error_text(exc))
+
+    def _poll_join_requests(self) -> None:
+        if not self.running or self.api.token is None:
+            return
+        try:
+            previous = {channel.channel_id: channel.is_member for channel in self.channels}
+            self._refresh_channels()
+            for channel in self.channels:
+                if channel.owner_id != self.current_user_id:
+                    continue
+                for pending in self.api.list_join_requests(channel.channel_id):
+                    if pending.request_id in self.seen_join_requests:
+                        continue
+                    approved = messagebox.askyesno(
+                        "Join request",
+                        f"Allow {pending.user.username} to join {channel.name}?",
+                        parent=self.root,
+                    )
+                    self.api.decide_join_request(pending.request_id, approved)
+                    self.seen_join_requests.add(pending.request_id)
+            selected = self._selected_list_channel()
+            if selected and previous.get(selected.channel_id) != selected.is_member:
+                self._select_channel()
+            elif selected and selected.is_member:
+                self._refresh_members(selected)
+        except Exception as exc:
+            self._set_status(_error_text(exc))
+        self.root.after(5000, self._poll_join_requests)
 
     def _ask_ai(self, operation: str) -> None:
         if not self.selected_channel_id:

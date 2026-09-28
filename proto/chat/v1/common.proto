@@ -36,6 +36,8 @@ message ChannelSummary {
   string channel_id = 1;
   string name = 2;
   bool archived = 3;
+  string owner_id = 4;
+  bool is_member = 5;
 }
 
 message MessageView {

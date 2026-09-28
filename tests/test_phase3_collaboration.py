@@ -26,6 +26,7 @@ from proto.chat.v1 import (
 )
 from server.database import Database
 from server.grpc_server import create_chat_server
+from server.repositories.sqlite import SQLiteUnitOfWorkFactory
 from server.seed import seed_users
 
 
@@ -62,8 +63,8 @@ class Phase3CollaborationTests(unittest.TestCase):
         )
         self.server.start()
         self.tokens = {
-            name: self._login(name, ADMIN_PASSWORD if name == "admin" else PASSWORD)
-            for name in ("admin", "alice", "bob", "charlie", "outsider")
+            name: self._login(name, PASSWORD)
+            for name in ("alice", "bob", "charlie", "outsider")
         }
         self.channel_id = self._create_channel()
         for username in ("alice", "bob", "charlie"):
@@ -100,7 +101,7 @@ class Phase3CollaborationTests(unittest.TestCase):
 
     def _create_channel(self) -> str:
         request_id = "phase3-create"
-        channel = self._channel(request_id, "admin")
+        channel = self._channel(request_id, "alice")
         try:
             return channel_pb2_grpc.ChannelServiceStub(channel).CreateChannel(
                 channel_pb2.CreateChannelRequest(
@@ -113,6 +114,8 @@ class Phase3CollaborationTests(unittest.TestCase):
             channel.close()
 
     def _join(self, username: str) -> None:
+        if username == "alice":
+            return  # The creator is already a member.
         request_id = f"join-{username}"
         channel = self._channel(request_id, username)
         try:
@@ -125,6 +128,25 @@ class Phase3CollaborationTests(unittest.TestCase):
             )
         finally:
             channel.close()
+        owner_channel = self._channel(f"approve-{username}", "alice")
+        try:
+            stub = channel_pb2_grpc.ChannelServiceStub(owner_channel)
+            pending = stub.ListJoinRequests(
+                channel_pb2.ListJoinRequestsRequest(
+                    context=common_pb2.RequestContext(request_id=f"pending-{username}"),
+                    channel_id=self.channel_id,
+                ), timeout=3,
+            ).requests
+            match = next(item for item in pending if item.user.username == username)
+            stub.DecideJoinRequest(
+                channel_pb2.DecideJoinRequestRequest(
+                    context=common_pb2.RequestContext(request_id=f"approve-{username}"),
+                    join_request_id=match.request_id,
+                    approve=True,
+                ), timeout=3,
+            )
+        finally:
+            owner_channel.close()
 
     def _send(self, username: str, client_id: str, body: str):
         request_id = f"send-{username}-{time.time_ns()}"
@@ -415,6 +437,148 @@ class Phase3CollaborationTests(unittest.TestCase):
         self.assertEqual(interrupted.exception.code(), grpc.StatusCode.INVALID_ARGUMENT)
         self.assertEqual(invalid.exception.code(), grpc.StatusCode.INVALID_ARGUMENT)
         self.assertEqual(list(self.upload_path.iterdir()), [])
+
+    def test_removed_member_loses_existing_event_stream(self) -> None:
+        channel = self._channel("bob-stream-before-removal", "bob")
+        stream = chat_pb2_grpc.ChatServiceStub(channel).SubscribeEvents(
+            chat_pb2.SubscribeEventsRequest(
+                context=common_pb2.RequestContext(request_id="bob-stream-before-removal"),
+                channel_ids=[self.channel_id],
+            ), timeout=3,
+        )
+        try:
+            next(stream)  # subscription is established
+            owner_channel = self._channel("remove-bob-stream", "alice")
+            try:
+                channel_pb2_grpc.ChannelServiceStub(owner_channel).ManageMember(
+                    channel_pb2.ManageMemberRequest(
+                        context=common_pb2.RequestContext(request_id="remove-bob-stream"),
+                        channel_id=self.channel_id,
+                        user_id=self._user_id("bob"),
+                        add=False,
+                    ), timeout=3,
+                )
+            finally:
+                owner_channel.close()
+            with self.assertRaises(grpc.RpcError) as revoked:
+                for _ in range(20):
+                    next(stream)
+            self.assertEqual(revoked.exception.code(), grpc.StatusCode.PERMISSION_DENIED)
+        finally:
+            stream.cancel()
+            channel.close()
+
+    def test_only_owner_can_delete_channel_and_children_are_erased(self) -> None:
+        content = b"channel to delete"
+        self._send("alice", "before-delete", "this will be removed")
+        connection = self._channel("upload-before-delete", "alice")
+        try:
+            uploaded = file_pb2_grpc.FileServiceStub(connection).UploadFile(
+                self._upload_requests(
+                    self.channel_id, "upload-before-delete", "upload-before-delete",
+                    content, hashlib.sha256(content).hexdigest(),
+                ), timeout=3,
+            ).file
+        finally:
+            connection.close()
+        outsider_channel = self._channel("pending-before-delete", "outsider")
+        try:
+            channel_pb2_grpc.ChannelServiceStub(outsider_channel).JoinChannel(
+                channel_pb2.ChannelMembershipRequest(
+                    context=common_pb2.RequestContext(request_id="pending-before-delete"),
+                    channel_id=self.channel_id,
+                ), timeout=3,
+            )
+        finally:
+            outsider_channel.close()
+        with SQLiteUnitOfWorkFactory(self.database)() as unit:
+            storage_reference = unit.files.get(uploaded.file_id).storage_reference
+        other_channel_id = self._create_other_channel()
+        member_channel = self._channel("member-delete-denied", "bob")
+        try:
+            with self.assertRaises(grpc.RpcError) as denied:
+                channel_pb2_grpc.ChannelServiceStub(member_channel).DeleteChannel(
+                    channel_pb2.ChannelMembershipRequest(
+                        context=common_pb2.RequestContext(request_id="member-delete-denied"),
+                        channel_id=self.channel_id,
+                    ), timeout=3,
+                )
+        finally:
+            member_channel.close()
+        self.assertEqual(denied.exception.code(), grpc.StatusCode.PERMISSION_DENIED)
+        anonymous_channel = self._channel("anonymous-delete")
+        try:
+            with self.assertRaises(grpc.RpcError) as anonymous:
+                channel_pb2_grpc.ChannelServiceStub(anonymous_channel).DeleteChannel(
+                    channel_pb2.ChannelMembershipRequest(
+                        context=common_pb2.RequestContext(request_id="anonymous-delete"),
+                        channel_id=self.channel_id,
+                    ), timeout=3,
+                )
+        finally:
+            anonymous_channel.close()
+        self.assertEqual(anonymous.exception.code(), grpc.StatusCode.UNAUTHENTICATED)
+        owner_channel = self._channel("owner-delete", "alice")
+        try:
+            channel_pb2_grpc.ChannelServiceStub(owner_channel).DeleteChannel(
+                channel_pb2.ChannelMembershipRequest(
+                    context=common_pb2.RequestContext(request_id="owner-delete"),
+                    channel_id=self.channel_id,
+                ), timeout=3,
+            )
+        finally:
+            owner_channel.close()
+        with SQLiteUnitOfWorkFactory(self.database)() as unit:
+            self.assertIsNone(unit.channels.get(self.channel_id))
+            self.assertIsNotNone(unit.channels.get(other_channel_id))
+            for table in ("channel_members", "channel_join_requests", "messages", "files"):
+                self.assertEqual(unit.connection.execute(
+                    f"SELECT COUNT(*) FROM {table} WHERE channel_id=?", (self.channel_id,)
+                ).fetchone()[0], 0)
+            self.assertIsNotNone(unit.users.get(self._user_id("bob")))
+        self.assertTrue((self.upload_path / storage_reference).exists())
+        member_channel = self._channel("after-delete", "bob")
+        try:
+            with self.assertRaises(grpc.RpcError) as history_missing:
+                chat_pb2_grpc.ChatServiceStub(member_channel).GetHistory(
+                    chat_pb2.GetHistoryRequest(
+                        context=common_pb2.RequestContext(request_id="after-delete-history"),
+                        channel_id=self.channel_id,
+                    ), timeout=3,
+                )
+            with self.assertRaises(grpc.RpcError) as file_missing:
+                list(file_pb2_grpc.FileServiceStub(member_channel).DownloadFile(
+                    file_pb2.DownloadFileRequest(
+                        context=common_pb2.RequestContext(request_id="after-delete-file"),
+                        file_id=uploaded.file_id,
+                    ), timeout=3,
+                ))
+        finally:
+            member_channel.close()
+        self.assertEqual(history_missing.exception.code(), grpc.StatusCode.NOT_FOUND)
+        self.assertEqual(file_missing.exception.code(), grpc.StatusCode.NOT_FOUND)
+        self.server.stop(0).wait()
+        self.server, self.target = create_chat_server(self.settings, bind_address="127.0.0.1:0")
+        self.server.start()
+        with SQLiteUnitOfWorkFactory(self.database)() as unit:
+            self.assertIsNone(unit.channels.get(self.channel_id))
+            self.assertIsNotNone(unit.channels.get(other_channel_id))
+
+    def _user_id(self, username: str) -> str:
+        with SQLiteUnitOfWorkFactory(self.database)() as unit:
+            return unit.users.get_by_username(username).user.id
+
+    def _create_other_channel(self) -> str:
+        connection = self._channel("create-other", "alice")
+        try:
+            return channel_pb2_grpc.ChannelServiceStub(connection).CreateChannel(
+                channel_pb2.CreateChannelRequest(
+                    context=common_pb2.RequestContext(request_id="create-other"),
+                    name="other-channel",
+                ), timeout=3,
+            ).channel.channel_id
+        finally:
+            connection.close()
 
 
 if __name__ == "__main__":

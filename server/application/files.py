@@ -132,15 +132,23 @@ class FileApplication:
                 command.message_id, user.username,
             )
             os.replace(temporary_path, final_path)
-            with self._factory(immediate=True) as unit_of_work:
-                created = unit_of_work.files.add(metadata, client_request_id)
-                if created:
-                    unit_of_work.commit()
-                else:
-                    existing = unit_of_work.files.get_by_client_request(
-                        user.id, client_request_id
+            try:
+                with self._factory(immediate=True) as unit_of_work:
+                    # The channel may have been deleted while chunks were arriving.
+                    self._authorize_channel(
+                        unit_of_work, channel_id, user.id, request_id, write=True
                     )
-                    unit_of_work.commit()
+                    created = unit_of_work.files.add(metadata, client_request_id)
+                    if created:
+                        unit_of_work.commit()
+                    else:
+                        existing = unit_of_work.files.get_by_client_request(
+                            user.id, client_request_id
+                        )
+                        unit_of_work.commit()
+            except Exception:
+                final_path.unlink(missing_ok=True)
+                raise
             if created:
                 self._events.publish("file", metadata, metadata.created_at)
                 return metadata

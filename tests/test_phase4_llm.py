@@ -81,8 +81,8 @@ class Phase4LLMIntegrationTests(unittest.TestCase):
         )
         self.chat_server.start()
         self.tokens = {
-            name: self._login(name, ADMIN_PASSWORD if name == "admin" else PASSWORD)
-            for name in ("admin", "alice", "bob", "outsider")
+            name: self._login(name, PASSWORD)
+            for name in ("alice", "bob", "outsider")
         }
         self.channel_a = self._create_channel("private-a")
         self.channel_b = self._create_channel("private-b")
@@ -118,7 +118,7 @@ class Phase4LLMIntegrationTests(unittest.TestCase):
 
     def _create_channel(self, name: str) -> str:
         request_id = f"create-{name}"
-        channel = self._channel(request_id, "admin")
+        channel = self._channel(request_id, "alice")
         try:
             return channel_pb2_grpc.ChannelServiceStub(channel).CreateChannel(
                 channel_pb2.CreateChannelRequest(
@@ -129,6 +129,8 @@ class Phase4LLMIntegrationTests(unittest.TestCase):
             channel.close()
 
     def _join(self, username: str, channel_id: str) -> None:
+        if username == "alice":
+            return
         request_id = f"join-{username}-{channel_id}"
         channel = self._channel(request_id, username)
         try:
@@ -140,6 +142,25 @@ class Phase4LLMIntegrationTests(unittest.TestCase):
             )
         finally:
             channel.close()
+        owner_channel = self._channel(f"approve-{username}-{channel_id}", "alice")
+        try:
+            stub = channel_pb2_grpc.ChannelServiceStub(owner_channel)
+            pending = stub.ListJoinRequests(
+                channel_pb2.ListJoinRequestsRequest(
+                    context=common_pb2.RequestContext(request_id=f"pending-{username}"),
+                    channel_id=channel_id,
+                ), timeout=2,
+            ).requests
+            match = next(item for item in pending if item.user.username == username)
+            stub.DecideJoinRequest(
+                channel_pb2.DecideJoinRequestRequest(
+                    context=common_pb2.RequestContext(request_id=f"approve-{username}"),
+                    join_request_id=match.request_id,
+                    approve=True,
+                ), timeout=2,
+            )
+        finally:
+            owner_channel.close()
 
     def _send(self, username: str, channel_id: str, body: str):
         request_id = f"send-{time.time_ns()}"

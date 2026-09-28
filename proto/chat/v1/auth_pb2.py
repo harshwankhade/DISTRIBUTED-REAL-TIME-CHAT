@@ -26,19 +26,25 @@ from google.protobuf import timestamp_pb2 as google_dot_protobuf_dot_timestamp__
 from proto.chat.v1 import common_pb2 as proto_dot_chat_dot_v1_dot_common__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x18proto/chat/v1/auth.proto\x12\x13\x64istributed_chat.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1aproto/chat/v1/common.proto\"h\n\x0cLoginRequest\x12\x34\n\x07\x63ontext\x18\x01 \x01(\x0b\x32#.distributed_chat.v1.RequestContext\x12\x10\n\x08username\x18\x02 \x01(\t\x12\x10\n\x08password\x18\x03 \x01(\t\"\x83\x01\n\rLoginResponse\x12\x33\n\x06status\x18\x01 \x01(\x0b\x32#.distributed_chat.v1.ResponseStatus\x12\r\n\x05token\x18\x02 \x01(\t\x12.\n\nexpires_at\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\"E\n\rLogoutRequest\x12\x34\n\x07\x63ontext\x18\x01 \x01(\x0b\x32#.distributed_chat.v1.RequestContext2\xaf\x01\n\x0b\x41uthService\x12N\n\x05Login\x12!.distributed_chat.v1.LoginRequest\x1a\".distributed_chat.v1.LoginResponse\x12P\n\x06Logout\x12\".distributed_chat.v1.LogoutRequest\x1a\".distributed_chat.v1.EmptyResponseb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x18proto/chat/v1/auth.proto\x12\x13\x64istributed_chat.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1aproto/chat/v1/common.proto\"k\n\x0fRegisterRequest\x12\x34\n\x07\x63ontext\x18\x01 \x01(\x0b\x32#.distributed_chat.v1.RequestContext\x12\x10\n\x08username\x18\x02 \x01(\t\x12\x10\n\x08password\x18\x03 \x01(\t\"h\n\x0cLoginRequest\x12\x34\n\x07\x63ontext\x18\x01 \x01(\x0b\x32#.distributed_chat.v1.RequestContext\x12\x10\n\x08username\x18\x02 \x01(\t\x12\x10\n\x08password\x18\x03 \x01(\t\"\xb3\x01\n\rLoginResponse\x12\x33\n\x06status\x18\x01 \x01(\x0b\x32#.distributed_chat.v1.ResponseStatus\x12\r\n\x05token\x18\x02 \x01(\t\x12.\n\nexpires_at\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12.\n\x04user\x18\x04 \x01(\x0b\x32 .distributed_chat.v1.UserSummary\"H\n\x10ListUsersRequest\x12\x34\n\x07\x63ontext\x18\x01 \x01(\x0b\x32#.distributed_chat.v1.RequestContext\"y\n\x11ListUsersResponse\x12\x33\n\x06status\x18\x01 \x01(\x0b\x32#.distributed_chat.v1.ResponseStatus\x12/\n\x05users\x18\x02 \x03(\x0b\x32 .distributed_chat.v1.UserSummary\"E\n\rLogoutRequest\x12\x34\n\x07\x63ontext\x18\x01 \x01(\x0b\x32#.distributed_chat.v1.RequestContext2\xe1\x02\n\x0b\x41uthService\x12T\n\x08Register\x12$.distributed_chat.v1.RegisterRequest\x1a\".distributed_chat.v1.LoginResponse\x12N\n\x05Login\x12!.distributed_chat.v1.LoginRequest\x1a\".distributed_chat.v1.LoginResponse\x12P\n\x06Logout\x12\".distributed_chat.v1.LogoutRequest\x1a\".distributed_chat.v1.EmptyResponse\x12Z\n\tListUsers\x12%.distributed_chat.v1.ListUsersRequest\x1a&.distributed_chat.v1.ListUsersResponseb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'proto.chat.v1.auth_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
   DESCRIPTOR._loaded_options = None
-  _globals['_LOGINREQUEST']._serialized_start=110
-  _globals['_LOGINREQUEST']._serialized_end=214
-  _globals['_LOGINRESPONSE']._serialized_start=217
-  _globals['_LOGINRESPONSE']._serialized_end=348
-  _globals['_LOGOUTREQUEST']._serialized_start=350
-  _globals['_LOGOUTREQUEST']._serialized_end=419
-  _globals['_AUTHSERVICE']._serialized_start=422
-  _globals['_AUTHSERVICE']._serialized_end=597
+  _globals['_REGISTERREQUEST']._serialized_start=110
+  _globals['_REGISTERREQUEST']._serialized_end=217
+  _globals['_LOGINREQUEST']._serialized_start=219
+  _globals['_LOGINREQUEST']._serialized_end=323
+  _globals['_LOGINRESPONSE']._serialized_start=326
+  _globals['_LOGINRESPONSE']._serialized_end=505
+  _globals['_LISTUSERSREQUEST']._serialized_start=507
+  _globals['_LISTUSERSREQUEST']._serialized_end=579
+  _globals['_LISTUSERSRESPONSE']._serialized_start=581
+  _globals['_LISTUSERSRESPONSE']._serialized_end=702
+  _globals['_LOGOUTREQUEST']._serialized_start=704
+  _globals['_LOGOUTREQUEST']._serialized_end=773
+  _globals['_AUTHSERVICE']._serialized_start=776
+  _globals['_AUTHSERVICE']._serialized_end=1129
 # @@protoc_insertion_point(module_scope)

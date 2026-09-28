@@ -6,8 +6,16 @@ import "google/protobuf/timestamp.proto";
 import "proto/chat/v1/common.proto";
 
 service AuthService {
+  rpc Register(RegisterRequest) returns (LoginResponse);
   rpc Login(LoginRequest) returns (LoginResponse);
   rpc Logout(LogoutRequest) returns (EmptyResponse);
+  rpc ListUsers(ListUsersRequest) returns (ListUsersResponse);
+}
+
+message RegisterRequest {
+  RequestContext context = 1;
+  string username = 2;
+  string password = 3;
 }
 
 message LoginRequest {
@@ -20,9 +28,18 @@ message LoginResponse {
   ResponseStatus status = 1;
   string token = 2;
   google.protobuf.Timestamp expires_at = 3;
+  UserSummary user = 4;
+}
+
+message ListUsersRequest {
+  RequestContext context = 1;
+}
+
+message ListUsersResponse {
+  ResponseStatus status = 1;
+  repeated UserSummary users = 2;
 }
 
 message LogoutRequest {
   RequestContext context = 1;
 }
-

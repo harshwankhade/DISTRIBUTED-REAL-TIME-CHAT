@@ -36,14 +36,19 @@ internal UUIDs. The server remains authoritative for both values.
 ### Chat application process
 
 - `HealthService`: transport health and node identity.
-- `AuthService`: working login and logout with expiring persisted sessions.
-- `ChannelService`: working create/list/join/leave with authorization.
+- `AuthService`: register/login/logout and authenticated user listing with
+  expiring persisted sessions.
+- `ChannelService`: create/list, join request/leave, owner approval and member
+  management. Members may call `ListMembers`; only the owner may manage them or
+  call `DeleteChannel`. Deletion permanently cascades to memberships, pending
+  requests, messages, and file records. A successful JoinChannel RPC means the
+  request is pending, not that channel access has been granted.
 - `ChatService`: message send/history plus server-streamed events.
 - `PresenceService`: heartbeat/status plus presence event stream.
 - `FileService`: chunked client-streamed upload, server-streamed download, and
   authorized paginated channel-file listing.
-- `AdminService`: working user, role/status, channel archive, and membership
-  administration.
+- `AdminService`: legacy contract is intentionally not registered; calls return
+  `UNIMPLEMENTED`. Channel owners use `ChannelService` instead.
 - `LLMService`: authenticated AI gateway. It rejects non-members, ignores
   untrusted caller context, queries bounded authorized history, and invokes the
   independent service with a deadline.
@@ -65,7 +70,8 @@ fallback response so chat remains available.
 ## Streaming decisions
 
 `ChatService.SubscribeEvents` is server streaming. It verifies membership for
-every requested channel, emits new-message events, provides idle keepalives,
+every requested channel at subscription and before subsequent events, emits
+new-message events, provides idle keepalives,
 and stays connected until cancellation or deadline. An empty channel filter is
 allowed for transport smoke checks and receives keepalives but no message data.
 

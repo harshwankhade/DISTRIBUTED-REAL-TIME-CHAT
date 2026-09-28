@@ -1,15 +1,10 @@
-"""Repeatable seed command for one administrator and sample users."""
+"""Legacy test seeding helper; interactive account creation uses Register."""
 
 from __future__ import annotations
 
-import argparse
-import getpass
-import os
 from dataclasses import dataclass
 from uuid import uuid4
 
-from common.config import ConfigurationError, load_settings
-from common.logging import configure_logging
 from common.metadata import utc_now
 from domain.models import User, UserRole, UserStatus
 from server.database import Database, apply_migrations
@@ -63,50 +58,8 @@ def seed_users(
     return SeedResult(tuple(created), tuple(existing))
 
 
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Seed Phase 2 users")
-    parser.add_argument("--admin-username", default="admin")
-    parser.add_argument(
-        "--sample-user",
-        action="append",
-        dest="sample_users",
-        help="sample username; repeat for more users (defaults: alice and bob)",
-    )
-    return parser
-
-
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
-    try:
-        settings = load_settings()
-    except ConfigurationError as exc:
-        raise SystemExit(f"configuration error: {exc}") from exc
-
-    admin_password = os.environ.get("SEED_ADMIN_PASSWORD") or getpass.getpass(
-        "Seed administrator password: "
-    )
-    sample_password = os.environ.get("SEED_SAMPLE_PASSWORD") or getpass.getpass(
-        "Seed sample-user password: "
-    )
-    try:
-        result = seed_users(
-            Database(settings.chat_database_path),
-            admin_username=args.admin_username,
-            admin_password=admin_password,
-            sample_usernames=args.sample_users or ["alice", "bob"],
-            sample_password=sample_password,
-        )
-    except ValueError as exc:
-        raise SystemExit(f"seed input error: {exc}") from exc
-    logger = configure_logging(
-        service="database-seed",
-        node_id=settings.chat_node_id,
-        level=settings.log_level,
-    )
-    logger.info(
-        "seed_complete",
-        extra={"created_users": result.created, "existing_users": result.existing},
-    )
+    print("Seeding is retired. Start the app and use Register to create user accounts.")
     return 0
 
 

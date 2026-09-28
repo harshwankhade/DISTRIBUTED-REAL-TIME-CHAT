@@ -14,8 +14,6 @@ from google.protobuf.timestamp_pb2 import Timestamp
 from common.grpc_metadata import MetadataClientInterceptor
 from common.metadata import new_request_id
 from proto.chat.v1 import (
-    admin_pb2,
-    admin_pb2_grpc,
     auth_pb2,
     auth_pb2_grpc,
     channel_pb2,
@@ -63,7 +61,7 @@ class ChatApi:
             request_id=request_id, client_request_id=client_request_id
         )
 
-    def login(self, username: str, password: str) -> None:
+    def login(self, username: str, password: str):
         request_id = new_request_id()
         response = auth_pb2_grpc.AuthServiceStub(
             self._channel(request_id, authenticated=False)
@@ -73,6 +71,26 @@ class ChatApi:
             ), timeout=self._timeout,
         )
         self.token = response.token
+        return response.user
+
+    def register(self, username: str, password: str):
+        request_id = new_request_id()
+        response = auth_pb2_grpc.AuthServiceStub(
+            self._channel(request_id, authenticated=False)
+        ).Register(
+            auth_pb2.RegisterRequest(
+                context=self._context(request_id), username=username, password=password
+            ), timeout=self._timeout,
+        )
+        self.token = response.token
+        return response.user
+
+    def list_users(self):
+        request_id = new_request_id()
+        return auth_pb2_grpc.AuthServiceStub(self._channel(request_id)).ListUsers(
+            auth_pb2.ListUsersRequest(context=self._context(request_id)),
+            timeout=self._timeout,
+        ).users
 
     def logout(self) -> None:
         if self.token is None:
@@ -87,12 +105,24 @@ class ChatApi:
             self.token = None
 
     def list_channels(self):
-        request_id = new_request_id()
-        return channel_pb2_grpc.ChannelServiceStub(self._channel(request_id)).ListChannels(
-            channel_pb2.ListChannelsRequest(
-                context=self._context(request_id), page_size=100
-            ), timeout=self._timeout,
-        ).channels
+        channels = []
+        page_token = ""
+        seen_tokens: set[str] = set()
+        while True:
+            request_id = new_request_id()
+            response = channel_pb2_grpc.ChannelServiceStub(self._channel(request_id)).ListChannels(
+                channel_pb2.ListChannelsRequest(
+                    context=self._context(request_id), page_size=100,
+                    page_token=page_token,
+                ), timeout=self._timeout,
+            )
+            channels.extend(response.channels)
+            page_token = response.next_page_token
+            if not page_token:
+                return channels
+            if page_token in seen_tokens:
+                raise RuntimeError("channel listing returned a repeated page token")
+            seen_tokens.add(page_token)
 
     def create_channel(self, name: str):
         request_id = new_request_id()
@@ -101,6 +131,48 @@ class ChatApi:
                 context=self._context(request_id), name=name
             ), timeout=self._timeout,
         ).channel
+
+    def list_join_requests(self, channel_id: str):
+        request_id = new_request_id()
+        return channel_pb2_grpc.ChannelServiceStub(self._channel(request_id)).ListJoinRequests(
+            channel_pb2.ListJoinRequestsRequest(
+                context=self._context(request_id), channel_id=channel_id
+            ), timeout=self._timeout,
+        ).requests
+
+    def decide_join_request(self, join_request_id: str, approve: bool) -> None:
+        request_id = new_request_id()
+        channel_pb2_grpc.ChannelServiceStub(self._channel(request_id)).DecideJoinRequest(
+            channel_pb2.DecideJoinRequestRequest(
+                context=self._context(request_id),
+                join_request_id=join_request_id, approve=approve,
+            ), timeout=self._timeout,
+        )
+
+    def manage_member(self, channel_id: str, user_id: str, add: bool) -> None:
+        request_id = new_request_id()
+        channel_pb2_grpc.ChannelServiceStub(self._channel(request_id)).ManageMember(
+            channel_pb2.ManageMemberRequest(
+                context=self._context(request_id),
+                channel_id=channel_id, user_id=user_id, add=add,
+            ), timeout=self._timeout,
+        )
+
+    def list_members(self, channel_id: str):
+        request_id = new_request_id()
+        return channel_pb2_grpc.ChannelServiceStub(self._channel(request_id)).ListMembers(
+            channel_pb2.ListMembersRequest(
+                context=self._context(request_id), channel_id=channel_id,
+            ), timeout=self._timeout,
+        ).members
+
+    def delete_channel(self, channel_id: str) -> None:
+        request_id = new_request_id()
+        channel_pb2_grpc.ChannelServiceStub(self._channel(request_id)).DeleteChannel(
+            channel_pb2.ChannelMembershipRequest(
+                context=self._context(request_id), channel_id=channel_id,
+            ), timeout=self._timeout,
+        )
 
     def join_channel(self, channel_id: str) -> None:
         self._membership(channel_id, join=True)
@@ -257,14 +329,3 @@ class ChatApi:
 
     def suggestion(self, channel_id: str) -> tuple[str, str]:
         return self._assistant(channel_id, "suggestion")
-
-    def create_user(self, username: str, password: str, role: str):
-        request_id = new_request_id()
-        return admin_pb2_grpc.AdminServiceStub(self._channel(request_id)).CreateUser(
-            admin_pb2.CreateUserRequest(
-                context=self._context(request_id),
-                username=username,
-                password=password,
-                role=role,
-            ), timeout=self._timeout,
-        ).user

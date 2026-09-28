@@ -35,6 +35,11 @@ class AuthServiceStub:
         Args:
             channel: A grpc.Channel.
         """
+        self.Register = channel.unary_unary(
+                '/distributed_chat.v1.AuthService/Register',
+                request_serializer=proto_dot_chat_dot_v1_dot_auth__pb2.RegisterRequest.SerializeToString,
+                response_deserializer=proto_dot_chat_dot_v1_dot_auth__pb2.LoginResponse.FromString,
+                _registered_method=True)
         self.Login = channel.unary_unary(
                 '/distributed_chat.v1.AuthService/Login',
                 request_serializer=proto_dot_chat_dot_v1_dot_auth__pb2.LoginRequest.SerializeToString,
@@ -45,10 +50,21 @@ class AuthServiceStub:
                 request_serializer=proto_dot_chat_dot_v1_dot_auth__pb2.LogoutRequest.SerializeToString,
                 response_deserializer=proto_dot_chat_dot_v1_dot_common__pb2.EmptyResponse.FromString,
                 _registered_method=True)
+        self.ListUsers = channel.unary_unary(
+                '/distributed_chat.v1.AuthService/ListUsers',
+                request_serializer=proto_dot_chat_dot_v1_dot_auth__pb2.ListUsersRequest.SerializeToString,
+                response_deserializer=proto_dot_chat_dot_v1_dot_auth__pb2.ListUsersResponse.FromString,
+                _registered_method=True)
 
 
 class AuthServiceServicer:
     """Missing associated documentation comment in .proto file."""
+
+    def Register(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
 
     def Login(self, request, context):
         """Missing associated documentation comment in .proto file."""
@@ -62,9 +78,20 @@ class AuthServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def ListUsers(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_AuthServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
+            'Register': grpc.unary_unary_rpc_method_handler(
+                    servicer.Register,
+                    request_deserializer=proto_dot_chat_dot_v1_dot_auth__pb2.RegisterRequest.FromString,
+                    response_serializer=proto_dot_chat_dot_v1_dot_auth__pb2.LoginResponse.SerializeToString,
+            ),
             'Login': grpc.unary_unary_rpc_method_handler(
                     servicer.Login,
                     request_deserializer=proto_dot_chat_dot_v1_dot_auth__pb2.LoginRequest.FromString,
@@ -74,6 +101,11 @@ def add_AuthServiceServicer_to_server(servicer, server):
                     servicer.Logout,
                     request_deserializer=proto_dot_chat_dot_v1_dot_auth__pb2.LogoutRequest.FromString,
                     response_serializer=proto_dot_chat_dot_v1_dot_common__pb2.EmptyResponse.SerializeToString,
+            ),
+            'ListUsers': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListUsers,
+                    request_deserializer=proto_dot_chat_dot_v1_dot_auth__pb2.ListUsersRequest.FromString,
+                    response_serializer=proto_dot_chat_dot_v1_dot_auth__pb2.ListUsersResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -85,6 +117,33 @@ def add_AuthServiceServicer_to_server(servicer, server):
  # This class is part of an EXPERIMENTAL API.
 class AuthService:
     """Missing associated documentation comment in .proto file."""
+
+    @staticmethod
+    def Register(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/distributed_chat.v1.AuthService/Register',
+            proto_dot_chat_dot_v1_dot_auth__pb2.RegisterRequest.SerializeToString,
+            proto_dot_chat_dot_v1_dot_auth__pb2.LoginResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
 
     @staticmethod
     def Login(request,
@@ -130,6 +189,33 @@ class AuthService:
             '/distributed_chat.v1.AuthService/Logout',
             proto_dot_chat_dot_v1_dot_auth__pb2.LogoutRequest.SerializeToString,
             proto_dot_chat_dot_v1_dot_common__pb2.EmptyResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListUsers(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/distributed_chat.v1.AuthService/ListUsers',
+            proto_dot_chat_dot_v1_dot_auth__pb2.ListUsersRequest.SerializeToString,
+            proto_dot_chat_dot_v1_dot_auth__pb2.ListUsersResponse.FromString,
             options,
             channel_credentials,
             insecure,

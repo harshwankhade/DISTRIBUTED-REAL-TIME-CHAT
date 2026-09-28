@@ -115,6 +115,12 @@ class SQLiteUserRepository:
         ).fetchone()
         return None if row is None else StoredUser(_user_from_row(row), row["password_hash"])
 
+    def list_active(self) -> list[User]:
+        rows = self._connection.execute(
+            "SELECT * FROM users WHERE status = 'active' AND role = 'user' ORDER BY username"
+        ).fetchall()
+        return [_user_from_row(row) for row in rows]
+
     def set_status(self, user_id: str, status: UserStatus) -> User | None:
         cursor = self._connection.execute(
             "UPDATE users SET status = ? WHERE id = ?", (status.value, user_id)
@@ -209,6 +215,12 @@ class SQLiteChannelRepository:
         ).fetchone()
         return None if row is None else _channel_from_row(row)
 
+    def delete(self, channel_id: str) -> bool:
+        # Foreign keys cascade to members, join requests, messages, and file records.
+        return self._connection.execute(
+            "DELETE FROM channels WHERE id = ?", (channel_id,)
+        ).rowcount > 0
+
     def list(self, *, include_archived: bool, limit: int, offset: int) -> list[Channel]:
         where = "" if include_archived else "WHERE archived_at IS NULL"
         rows = self._connection.execute(
@@ -254,6 +266,61 @@ class SQLiteChannelRepository:
             (channel_id, user_id),
         ).fetchone()
         return row is not None
+
+    def list_members(self, channel_id: str) -> list[User]:
+        rows = self._connection.execute(
+            """SELECT users.* FROM users JOIN channel_members
+               ON users.id = channel_members.user_id
+               WHERE channel_members.channel_id = ? ORDER BY users.username""",
+            (channel_id,),
+        ).fetchall()
+        return [_user_from_row(row) for row in rows]
+
+    def request_join(self, request_id: str, channel_id: str, user_id: str,
+                     created_at: datetime) -> str:
+        row = self._connection.execute(
+            "SELECT status FROM channel_join_requests WHERE channel_id=? AND user_id=?",
+            (channel_id, user_id),
+        ).fetchone()
+        if row is None:
+            self._connection.execute(
+                """INSERT INTO channel_join_requests
+                   (id, channel_id, user_id, status, created_at)
+                   VALUES (?, ?, ?, 'pending', ?)""",
+                (request_id, channel_id, user_id, _to_text(created_at)),
+            )
+            return "pending"
+        if row["status"] != "pending":
+            self._connection.execute(
+                """UPDATE channel_join_requests SET id=?, status='pending',
+                   created_at=?, decided_at=NULL WHERE channel_id=? AND user_id=?""",
+                (request_id, _to_text(created_at), channel_id, user_id),
+            )
+            return "pending"
+        return row["status"]
+
+    def list_join_requests(self, channel_id: str) -> list[tuple[str, User]]:
+        rows = self._connection.execute(
+            """SELECT requests.id AS join_id, users.*
+               FROM channel_join_requests AS requests
+               JOIN users ON users.id=requests.user_id
+               WHERE requests.channel_id=? AND requests.status='pending'
+               ORDER BY requests.created_at, requests.id""",
+            (channel_id,),
+        ).fetchall()
+        return [(row["join_id"], _user_from_row(row)) for row in rows]
+
+    def get_join_request(self, join_id: str) -> sqlite3.Row | None:
+        return self._connection.execute(
+            "SELECT * FROM channel_join_requests WHERE id=?", (join_id,)
+        ).fetchone()
+
+    def decide_join_request(self, join_id: str, approve: bool, decided_at: datetime) -> None:
+        self._connection.execute(
+            """UPDATE channel_join_requests SET status=?, decided_at=?
+               WHERE id=? AND status='pending'""",
+            ("approved" if approve else "rejected", _to_text(decided_at), join_id),
+        )
 
 
 class SQLiteMessageRepository:

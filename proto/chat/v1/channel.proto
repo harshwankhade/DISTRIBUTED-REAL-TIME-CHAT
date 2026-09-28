@@ -9,6 +9,11 @@ service ChannelService {
   rpc ListChannels(ListChannelsRequest) returns (ListChannelsResponse);
   rpc JoinChannel(ChannelMembershipRequest) returns (EmptyResponse);
   rpc LeaveChannel(ChannelMembershipRequest) returns (EmptyResponse);
+  rpc ListJoinRequests(ListJoinRequestsRequest) returns (ListJoinRequestsResponse);
+  rpc DecideJoinRequest(DecideJoinRequestRequest) returns (EmptyResponse);
+  rpc ManageMember(ManageMemberRequest) returns (EmptyResponse);
+  rpc ListMembers(ListMembersRequest) returns (ListMembersResponse);
+  rpc DeleteChannel(ChannelMembershipRequest) returns (EmptyResponse);
 }
 
 message CreateChannelRequest {
@@ -38,3 +43,42 @@ message ChannelMembershipRequest {
   string channel_id = 2;
 }
 
+message JoinRequestView {
+  string request_id = 1;
+  string channel_id = 2;
+  UserSummary user = 3;
+  string status = 4;
+}
+
+message ListJoinRequestsRequest {
+  RequestContext context = 1;
+  string channel_id = 2;
+}
+
+message ListJoinRequestsResponse {
+  ResponseStatus status = 1;
+  repeated JoinRequestView requests = 2;
+}
+
+message DecideJoinRequestRequest {
+  RequestContext context = 1;
+  string join_request_id = 2;
+  bool approve = 3;
+}
+
+message ManageMemberRequest {
+  RequestContext context = 1;
+  string channel_id = 2;
+  string user_id = 3;
+  bool add = 4;
+}
+
+message ListMembersRequest {
+  RequestContext context = 1;
+  string channel_id = 2;
+}
+
+message ListMembersResponse {
+  ResponseStatus status = 1;
+  repeated UserSummary members = 2;
+}

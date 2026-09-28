@@ -8,7 +8,7 @@ clients / tests
       | gRPC + request ID + bearer token
       v
 chat transport services
-  Auth / Channel / Admin / Chat / Presence / File / AI gateway
+  Auth / Channel / Chat / Presence / File / AI gateway
       |
       v
 application services + immutable commands
@@ -19,7 +19,8 @@ unit of work + repositories       transient presence tracker
       |                                   |
       v                                   +--> heartbeat timeout
 per-server SQLite
-  users, sessions, channels, messages, file metadata, idempotency keys
+  users, sessions, channels, memberships, join requests,
+  messages, file metadata, idempotency keys
   |
   +--> stable references to file bytes under FILE_STORAGE_PATH
 
@@ -37,6 +38,13 @@ Tkinter clients --> all user-facing RPCs on the chat server
   services, maps safe errors to gRPC statuses, and streams events/file chunks.
 - **Application layer:** owns authentication, permissions, channel/message/file
   rules, idempotency, presence behavior, and command creation.
+- **Channel ownership:** a channel's existing `created_by` is its owner. The
+  creator is a member from creation. Nonmembers submit persisted join requests;
+  only the owner may approve or reject them or directly manage members. The
+  retired global AdminService is not registered. The GUI polls pending requests
+  rather than claiming a durable notification stream. Members may view the
+  roster; only the owner sees removal controls. Owner deletion removes the
+  channel and database-linked state in one transaction.
 - **Event layer:** fans out live message and presence events inside one process.
   It is not a durable queue; message history is the reconnect recovery path.
 - **Repository layer:** owns SQL and maps rows to domain objects.
@@ -88,10 +96,12 @@ distributed ordering or Raft consensus.
 ## Live streams
 
 After authorization, each subscriber receives a bounded in-memory queue. Chat
-streams filter by channels whose membership was verified when the stream began.
+streams recheck membership before each emitted event or keepalive, so removal
+or deletion closes an old subscription.
 Slow consumers may lose live events when their queue is full; they can recover
-durable messages with `GetHistory`. Membership changes during an already-open
-stream take effect after reconnect in this phase.
+durable messages with `GetHistory`. Stored uploaded bytes are not removed by
+channel deletion; their metadata is deleted, so app downloads cannot resolve
+them.
 
 ## Presence
 

@@ -39,6 +39,12 @@ class CreateChannelCommand:
 
 
 @dataclass(frozen=True, slots=True)
+class DeleteChannelCommand:
+    channel_id: str
+    owner_id: str
+
+
+@dataclass(frozen=True, slots=True)
 class ArchiveChannelCommand:
     channel_id: str
     archived_at: datetime

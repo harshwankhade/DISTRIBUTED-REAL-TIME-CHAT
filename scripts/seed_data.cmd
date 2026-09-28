@@ -1,11 +1,8 @@
 @echo off
 setlocal
 pushd "%~dp0.."
-if exist ".venv\Scripts\python.exe" (
-    .venv\Scripts\python.exe -m server.seed %*
-) else (
-    python -m server.seed %*
-)
-set "task_exit_code=%ERRORLEVEL%"
+echo User accounts are now created with Register in the Tkinter client.
+echo The legacy administrator seed command is retired.
+set "task_exit_code=0"
 popd
 exit /b %task_exit_code%

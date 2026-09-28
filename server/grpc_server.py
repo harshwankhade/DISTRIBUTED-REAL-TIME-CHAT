@@ -10,7 +10,6 @@ import grpc
 from common.config import Settings
 from common.grpc_metadata import RequestMetadataInterceptor
 from proto.chat.v1 import (
-    admin_pb2_grpc,
     auth_pb2_grpc,
     channel_pb2_grpc,
     chat_pb2_grpc,
@@ -20,7 +19,6 @@ from proto.chat.v1 import (
     presence_pb2_grpc,
 )
 from server.services import (
-    AdminService,
     AssistantGatewayService,
     AuthService,
     ChannelService,
@@ -29,7 +27,6 @@ from server.services import (
     HealthService,
     PresenceService,
 )
-from server.application.admin import AdminApplication
 from server.application.assistant import AssistantApplication, AuthorizedContextBuilder
 from server.application.auth import AuthApplication
 from server.application.channels import ChannelApplication
@@ -58,7 +55,6 @@ def create_chat_server(
         session_ttl_seconds=settings.session_ttl_seconds,
     )
     channel_application = ChannelApplication(unit_of_work_factory, auth_application)
-    admin_application = AdminApplication(unit_of_work_factory, auth_application)
     events = EventBroker()
     chat_application = ChatApplication(
         unit_of_work_factory,
@@ -122,9 +118,6 @@ def create_chat_server(
     )
     llm_pb2_grpc.add_LLMServiceServicer_to_server(
         AssistantGatewayService(assistant_application), server
-    )
-    admin_pb2_grpc.add_AdminServiceServicer_to_server(
-        AdminService(admin_application), server
     )
 
     requested_address = bind_address or settings.chat_endpoint.address
