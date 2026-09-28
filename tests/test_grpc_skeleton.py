@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import unittest
 import tempfile
+import time
 from pathlib import Path
 
 import grpc
@@ -71,8 +72,17 @@ class ChatGrpcSkeletonTests(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls) -> None:
-        cls.server.stop(0).wait()
-        cls.temp_directory.cleanup()
+        # Give cancelled stream handlers time to finish their final
+        # authorization read before Windows removes the SQLite test file.
+        cls.server.stop(1).wait()
+        for attempt in range(20):
+            try:
+                cls.temp_directory.cleanup()
+                break
+            except PermissionError:
+                if attempt == 19:
+                    raise
+                time.sleep(0.05)
 
     def test_health_echoes_request_id_and_extracts_token(self) -> None:
         request_id = "health-request-1"

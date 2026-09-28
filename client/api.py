@@ -226,6 +226,17 @@ class ChatApi:
         )
         return response.presence
 
+    def get_presence(self, user_id: str) -> str:
+        request_id = new_request_id()
+        response = presence_pb2_grpc.PresenceServiceStub(
+            self._channel(request_id)
+        ).GetPresence(
+            presence_pb2.GetPresenceRequest(
+                context=self._context(request_id), user_id=user_id,
+            ), timeout=self._timeout,
+        )
+        return response.presence
+
     def upload(self, channel_id: str, path: Path):
         content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
         size = path.stat().st_size

@@ -119,7 +119,8 @@ accounts remain and can log in with their previous passwords.
    **Owner: add selected user**, and choose one of your channels in the dropdown.
 4. Exchange messages and show that live events appear in each window.
 5. Leave heartbeats running, then close a client to demonstrate presence expiry
-   through the Presence RPC/tests.
+   in the registered-user list and selected channel's member list. The member
+   header also shows how many of that channel's members are online.
 6. Upload a permitted file and watch it appear in the channel timeline. Use its
    **Download** button from another member account and observe checksum
    verification. A non-member is rejected.
@@ -147,6 +148,8 @@ check using `SMOKE_USERNAME` and `SMOKE_PASSWORD`.
 - Human-readable sender usernames in message history and live chat, while
   retaining stable user IDs for authorization and persistence.
 - Heartbeat-based online/offline transitions and last-seen data.
+- Online/offline labels for registered users and selected-channel members,
+  with a per-channel online count in the Tkinter GUI.
 - Authorized chunked file transfer with size/type/path validation and SHA-256.
 - Paginated channel attachments and live upload events with an in-chat
   **Download** button.
@@ -180,6 +183,7 @@ continued chat operation while the LLM is offline.
 - [Channel-owner enhancement](docs/phases/channel_owner_enhancement.md)
 - [Channel management enhancement](docs/phases/channel_management_enhancement.md)
 - [Owner-channel picker enhancement](docs/phases/owner_channel_picker_enhancement.md)
+- [Presence GUI enhancement](docs/phases/presence_gui_enhancement.md)
 
 ## Known limitations
 
@@ -189,6 +193,8 @@ disk. Channel deletion removes database records, not uploaded bytes already on
 disk. There is no password reset, TLS, rate limiting, durable audit log,
 channel archive UI, or persistent AI output. Join
 approval is shown by GUI polling, so the owner must keep their client open to
-see the prompt; pending requests remain in SQLite. Most importantly, there is no
+see the prompt; pending requests remain in SQLite. Presence labels are refreshed
+about every five seconds and show `unknown` when the status RPC fails; offline
+appears after the configured heartbeat timeout. Most importantly, there is no
 Raft log, replication, majority commit, leader election, failover, or recovery;
 none of those guarantees are claimed in Milestone 1.

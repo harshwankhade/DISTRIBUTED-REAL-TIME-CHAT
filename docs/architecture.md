@@ -56,7 +56,9 @@ Tkinter clients --> all user-facing RPCs on the chat server
 - **LLM process (Node 1):** validates the bounded context and performs inference.
   It has no database, token-validation, file, or state-mutation access.
 - **Client layer:** a lightweight Tkinter GUI uses background threads for live
-  streams and inference so the desktop event loop stays responsive.
+  streams and inference so the desktop event loop stays responsive. It also
+  fetches bounded batches of per-user presence snapshots off the UI thread,
+  then updates user/member labels and the member online count on the UI thread.
 
 Message rows continue to store the stable sender user ID. Message reads join
 the users table to add the sender's username to transport responses, while new

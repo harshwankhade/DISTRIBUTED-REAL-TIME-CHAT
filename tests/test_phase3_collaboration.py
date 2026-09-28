@@ -9,6 +9,7 @@ from pathlib import Path
 
 import grpc
 
+from client.api import ChatApi
 from common.config import load_settings
 from common.grpc_metadata import MetadataClientInterceptor
 from proto.chat.v1 import (
@@ -271,6 +272,21 @@ class Phase3CollaborationTests(unittest.TestCase):
             call.cancel()
         finally:
             channel.close()
+
+    def test_presence_snapshot_reports_online_then_offline(self) -> None:
+        observer = ChatApi(self.target, timeout_seconds=3, chunk_size=3)
+        observed = ChatApi(self.target, timeout_seconds=3, chunk_size=3)
+        observer.token = self.tokens["alice"]
+        observed.token = self.tokens["bob"]
+        try:
+            observed.heartbeat()
+            bob_id = self._user_id("bob")
+            self.assertEqual(observer.get_presence(bob_id), "online")
+            time.sleep(0.35)
+            self.assertEqual(observer.get_presence(bob_id), "offline")
+        finally:
+            observer.close()
+            observed.close()
 
     @staticmethod
     def _upload_requests(channel_id: str, request_id: str, client_id: str,

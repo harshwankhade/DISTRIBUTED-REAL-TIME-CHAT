@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import threading
 import tkinter as tk
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from queue import Empty, Queue
 from tkinter import filedialog, messagebox, simpledialog, ttk
 
 import grpc
@@ -24,6 +26,14 @@ def _owned_channels(channels, owner_id: str):
         (channel for channel in channels if channel.owner_id == owner_id),
         key=lambda channel: channel.name.casefold(),
     )
+
+
+def _presence_text(status: str | None) -> str:
+    return status if status in {"online", "offline"} else "unknown"
+
+
+def _online_member_count(members, statuses: dict[str, str]) -> int:
+    return sum(statuses.get(member.user_id) == "online" for member in members)
 
 
 class _ChannelPicker(simpledialog.Dialog):
@@ -67,6 +77,10 @@ class ChatWindow:
         self.root.protocol("WM_DELETE_WINDOW", self.close)
         self.channels: list[object] = []
         self.users: list[object] = []
+        self.visible_members: list[object] = []
+        self.presence_by_user: dict[str, str] = {}
+        self._presence_results: Queue[dict[str, str]] = Queue()
+        self._presence_fetch_in_progress = False
         self.current_user_id = ""
         self.seen_join_requests: set[str] = set()
         self.selected_channel_id: str | None = None
@@ -122,6 +136,8 @@ class ChatWindow:
         self._build_main()
         self._refresh_channels()
         self._schedule_heartbeat()
+        self._schedule_presence_refresh()
+        self._drain_presence_results()
         self._poll_join_requests()
 
     def _build_main(self) -> None:
@@ -158,7 +174,8 @@ class ChatWindow:
         content.pack(fill="both", expand=True, pady=8)
         members_panel = ttk.Frame(content)
         members_panel.pack(side="right", fill="y", padx=(8, 0))
-        ttk.Label(members_panel, text="Channel members").pack(anchor="w")
+        self.members_header = ttk.Label(members_panel, text="Channel members")
+        self.members_header.pack(anchor="w")
         self.members_text = tk.Text(members_panel, width=25, state="disabled", wrap="none")
         self.members_text.pack(fill="y", expand=True)
         self.messages = tk.Text(content, state="disabled", wrap="word")
@@ -189,6 +206,20 @@ class ChatWindow:
         selection = self.channel_list.curselection()
         return self.channels[selection[0]] if selection else None
 
+    def _render_users(self, selected_user_id: str | None = None) -> None:
+        if selected_user_id is None:
+            selection = self.user_list.curselection()
+            if selection and selection[0] < len(self.users):
+                selected_user_id = self.users[selection[0]].user_id
+        scroll_position = self.user_list.yview()[0]
+        self.user_list.delete(0, "end")
+        for index, user in enumerate(self.users):
+            status = _presence_text(self.presence_by_user.get(user.user_id))
+            self.user_list.insert("end", f"{user.username} ({status})")
+            if user.user_id == selected_user_id:
+                self.user_list.selection_set(index)
+        self.user_list.yview_moveto(scroll_position)
+
     def _refresh_channels(self) -> None:
         try:
             selected_user = (
@@ -197,11 +228,7 @@ class ChatWindow:
             )
             selected_channel_id = self.selected_channel_id
             self.users = list(self.api.list_users())
-            self.user_list.delete(0, "end")
-            for index, user in enumerate(self.users):
-                self.user_list.insert("end", user.username)
-                if user.user_id == selected_user:
-                    self.user_list.selection_set(index)
+            self._render_users(selected_user)
             self.channels = list(self.api.list_channels())
             self.channel_list.delete(0, "end")
             selected_found = False
@@ -272,6 +299,8 @@ class ChatWindow:
         self._replace_members("")
 
     def _replace_members(self, value: str) -> None:
+        self.visible_members = []
+        self.members_header.configure(text="Channel members")
         self.members_text.configure(state="normal")
         self.members_text.delete("1.0", "end")
         self.members_text.insert("end", value)
@@ -284,10 +313,22 @@ class ChatWindow:
             self._replace_members("Members unavailable.\n")
             self._set_status(_error_text(exc))
             return
+        self.visible_members = list(members)
+        self._render_members(channel)
+
+    def _render_members(self, channel) -> None:
+        count = _online_member_count(self.visible_members, self.presence_by_user)
+        unknown = sum(
+            _presence_text(self.presence_by_user.get(member.user_id)) == "unknown"
+            for member in self.visible_members
+        )
+        suffix = f", {unknown} unknown" if unknown else ""
+        self.members_header.configure(text=f"Channel members ({count} online{suffix})")
         self.members_text.configure(state="normal")
         self.members_text.delete("1.0", "end")
-        for member in members:
-            self.members_text.insert("end", member.username)
+        for member in self.visible_members:
+            status = _presence_text(self.presence_by_user.get(member.user_id))
+            self.members_text.insert("end", f"{member.username} ({status})")
             if channel.owner_id == self.current_user_id and member.user_id != self.current_user_id:
                 button = ttk.Button(
                     self.members_text, text="Remove",
@@ -297,6 +338,53 @@ class ChatWindow:
                 self.members_text.window_create("end", window=button)
             self.members_text.insert("end", "\n")
         self.members_text.configure(state="disabled")
+
+    def _apply_presence(self, statuses: dict[str, str]) -> None:
+        self.presence_by_user.update(statuses)
+        self._render_users()
+        selected = self._selected_list_channel()
+        if selected is not None and selected.is_member:
+            self._render_members(selected)
+
+    def _fetch_presence(self, user_ids: tuple[str, ...]) -> None:
+        def fetch(user_id: str) -> tuple[str, str]:
+            try:
+                status = self.api.get_presence(user_id)
+            except Exception:
+                status = "unknown"  # A failed RPC is not proof the user is offline.
+            return user_id, _presence_text(status)
+
+        try:
+            with ThreadPoolExecutor(max_workers=min(8, len(user_ids))) as pool:
+                result = dict(pool.map(fetch, user_ids))
+        except Exception:
+            result = {user_id: "unknown" for user_id in user_ids}
+        self._presence_results.put(result)
+
+    def _schedule_presence_refresh(self) -> None:
+        if not self.running or self.api.token is None:
+            return
+        if not self._presence_fetch_in_progress:
+            user_ids = {user.user_id for user in self.users}
+            user_ids.update(member.user_id for member in self.visible_members)
+            if user_ids:
+                self._presence_fetch_in_progress = True
+                threading.Thread(
+                    target=self._fetch_presence, args=(tuple(user_ids),), daemon=True
+                ).start()
+        self.root.after(5000, self._schedule_presence_refresh)
+
+    def _drain_presence_results(self) -> None:
+        if not self.running:
+            return
+        try:
+            while True:
+                result = self._presence_results.get_nowait()
+                self._presence_fetch_in_progress = False
+                self._apply_presence(result)
+        except Empty:
+            pass
+        self.root.after(200, self._drain_presence_results)
 
     def _remove_member(self, channel, member) -> None:
         if not messagebox.askyesno(
@@ -549,7 +637,8 @@ class ChatWindow:
         if not self.running or self.api.token is None:
             return
         try:
-            self.api.heartbeat()
+            status = self.api.heartbeat()
+            self._apply_presence({self.current_user_id: _presence_text(status)})
         except grpc.RpcError as exc:
             self._set_status(_error_text(exc))
         self.root.after(5000, self._schedule_heartbeat)
