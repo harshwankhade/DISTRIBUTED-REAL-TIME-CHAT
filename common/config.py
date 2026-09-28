@@ -52,6 +52,16 @@ class Settings:
     presence_timeout_seconds: float
     llm_node_id: str
     llm_endpoint: ServiceEndpoint
+    llm_adapter: str
+    llm_model_path: Path
+    llm_context_window: int
+    llm_max_output_tokens: int
+    llm_threads: int
+    llm_gpu_layers: int
+    llm_temperature: float
+    llm_max_context_messages: int
+    llm_max_context_chars: int
+    llm_request_timeout_seconds: float
     client_id: str
 
 
@@ -95,6 +105,28 @@ def _positive_float(source: Mapping[str, str], key: str, default: float) -> floa
     return value
 
 
+def _nonnegative_int(source: Mapping[str, str], key: str, default: int) -> int:
+    raw_value = source.get(key, str(default)).strip()
+    try:
+        value = int(raw_value)
+    except ValueError as exc:
+        raise ConfigurationError(f"{key} must be an integer") from exc
+    if value < 0:
+        raise ConfigurationError(f"{key} must not be negative")
+    return value
+
+
+def _nonnegative_float(source: Mapping[str, str], key: str, default: float) -> float:
+    raw_value = source.get(key, str(default)).strip()
+    try:
+        value = float(raw_value)
+    except ValueError as exc:
+        raise ConfigurationError(f"{key} must be a number") from exc
+    if value < 0:
+        raise ConfigurationError(f"{key} must not be negative")
+    return value
+
+
 def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
     """Load settings from a supplied mapping or the local runtime environment.
 
@@ -124,6 +156,10 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
     )
     if not allowed_file_types:
         raise ConfigurationError("ALLOWED_FILE_TYPES must contain at least one value")
+
+    llm_adapter = _required_text(source, "LLM_ADAPTER", "mock").lower()
+    if llm_adapter not in {"mock", "local"}:
+        raise ConfigurationError("LLM_ADAPTER must be 'mock' or 'local'")
 
     return Settings(
         app_env=_required_text(source, "APP_ENV", "development"),
@@ -159,6 +195,26 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
         llm_endpoint=ServiceEndpoint(
             host=_required_text(source, "LLM_HOST", "127.0.0.1"),
             port=_port(source, "LLM_PORT", 50061),
+        ),
+        llm_adapter=llm_adapter,
+        llm_model_path=Path(
+            _required_text(
+                source,
+                "LLM_MODEL_PATH",
+                "models/qwen2.5-3b-instruct-q4_k_m.gguf",
+            )
+        ),
+        llm_context_window=_positive_int(source, "LLM_CONTEXT_WINDOW", 4096),
+        llm_max_output_tokens=_positive_int(source, "LLM_MAX_OUTPUT_TOKENS", 256),
+        llm_threads=_positive_int(source, "LLM_THREADS", 8),
+        llm_gpu_layers=_nonnegative_int(source, "LLM_GPU_LAYERS", 0),
+        llm_temperature=_nonnegative_float(source, "LLM_TEMPERATURE", 0.2),
+        llm_max_context_messages=_positive_int(
+            source, "LLM_MAX_CONTEXT_MESSAGES", 40
+        ),
+        llm_max_context_chars=_positive_int(source, "LLM_MAX_CONTEXT_CHARS", 12_000),
+        llm_request_timeout_seconds=_positive_float(
+            source, "LLM_REQUEST_TIMEOUT_SECONDS", 30.0
         ),
         client_id=_required_text(source, "CLIENT_ID", "client-1"),
     )

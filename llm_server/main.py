@@ -1,4 +1,4 @@
-"""Runnable Phase 1 LLM gRPC service skeleton."""
+"""Runnable Phase 4 local LLM gRPC service."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from llm_server.grpc_server import create_llm_server
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Phase 1 LLM gRPC skeleton")
+    parser = argparse.ArgumentParser(description="Phase 4 local LLM gRPC service")
     parser.add_argument(
         "--once",
         action="store_true",
@@ -41,9 +41,10 @@ def main(argv: list[str] | None = None) -> int:
     logger.info(
         "service_started",
         extra={
-            "phase": 1,
-            "skeleton": True,
-            "placeholder": True,
+            "phase": 4,
+            "skeleton": False,
+            "placeholder": False,
+            "adapter": settings.llm_adapter,
             "service_name": "llm-server",
             "service_node_id": settings.llm_node_id,
             "listen_address": bound_address,

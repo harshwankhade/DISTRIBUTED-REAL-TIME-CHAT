@@ -1,4 +1,4 @@
-"""Transport-independent application services through Phase 3."""
+"""Transport-independent application services through Phase 4."""
 
 from server.application.admin import AdminApplication
 from server.application.auth import AuthApplication

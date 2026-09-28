@@ -1,4 +1,4 @@
-"""Runnable client identity and Phase 1 gRPC smoke test."""
+"""Runnable Milestone 1 Tkinter client and transport smoke test."""
 
 from __future__ import annotations
 
@@ -8,11 +8,13 @@ import os
 from common.config import ConfigurationError, load_settings
 from common.logging import configure_logging
 from common.runtime import announce_placeholder
+from client.api import ChatApi
 from client.grpc_client import run_smoke_test
+from client.gui import ChatWindow
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Phase 1 chat client skeleton")
+    parser = argparse.ArgumentParser(description="Milestone 1 chat client")
     parser.add_argument(
         "--once",
         action="store_true",
@@ -26,6 +28,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--target",
         help="override the configured chat server address for the smoke test",
+    )
+    parser.add_argument(
+        "--gui",
+        action="store_true",
+        help="open the Milestone 1 Tkinter desktop client",
     )
     return parser
 
@@ -42,6 +49,14 @@ def main(argv: list[str] | None = None) -> int:
         level=settings.log_level,
     )
     target = args.target or settings.chat_endpoint.address
+    if args.gui:
+        api = ChatApi(
+            target,
+            timeout_seconds=settings.rpc_timeout_seconds,
+            chunk_size=settings.file_chunk_size_bytes,
+        )
+        ChatWindow(api, title=f"Distributed Chat - {settings.client_id}").run()
+        return 0
     if args.smoke:
         username = os.environ.get("SMOKE_USERNAME", "").strip()
         password = os.environ.get("SMOKE_PASSWORD", "")
@@ -58,7 +73,7 @@ def main(argv: list[str] | None = None) -> int:
         logger.info(
             "smoke_test_completed",
             extra={
-                "phase": 3,
+                "phase": 4,
                 "target": target,
                 "health_serving": result.health_serving,
                 "health_request_id": result.health_request_id,
@@ -81,7 +96,7 @@ def main(argv: list[str] | None = None) -> int:
         node_id=settings.client_id,
         address=target,
         once=True,
-        phase=3,
+        phase=4,
     )
     return 0
 

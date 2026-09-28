@@ -12,17 +12,16 @@ Every request has a `RequestContext` where the RPC shape permits it:
 
 - `request_id` correlates logs and downstream calls.
 - `client_request_id` identifies retryable state-changing work and is required
-  by `SendMessage` and file upload. Phase 3 persists deduplication results for
+  by `SendMessage` and file upload. Milestone 1 persists deduplication results for
   both operations; Phase 6 will preserve them in replicated state.
 
 The transport also carries `x-request-id`. The client and server interceptors
 manage this metadata. Authorization uses `authorization: Bearer <token>`.
-Phase 1 extracts the token without validating it or making authorization claims.
+The Phase 4 chat gateway validates the token before constructing AI context.
 
 Successful response messages use `ResponseStatus`. Transport/input failures use
-gRPC status codes. Auth, channel, admin, chat, presence, and file calls execute
-behavior through Phase 3. Only LLM calls remain `UNIMPLEMENTED`. Request IDs
-are echoed in response status or trailing metadata where possible.
+gRPC status codes. All Milestone 1 service contracts now have working behavior.
+Request IDs are echoed in response status or trailing metadata where possible.
 
 Clients must set deadlines. The Phase 1 smoke client uses
 `RPC_TIMEOUT_SECONDS`; later operations may choose operation-specific deadlines.
@@ -39,13 +38,23 @@ Clients must set deadlines. The Phase 1 smoke client uses
 - `FileService`: chunked client-streamed upload and server-streamed download.
 - `AdminService`: working user, role/status, channel archive, and membership
   administration.
+- `LLMService`: authenticated AI gateway. It rejects non-members, ignores
+  untrusted caller context, queries bounded authorized history, and invokes the
+  independent service with a deadline.
 
 ### Independent LLM process
 
 - `HealthService`: independent process health.
-- `LLMService`: smart reply, time-bounded summary, and contextual suggestion
-  contracts. Requests carry already-authorized context; Phase 4 will build and
-  enforce that context.
+- `LLMService`: inference-only smart reply, time-bounded summary, and contextual
+  suggestion implementation. It accepts only the bounded context supplied by
+  the chat application and cannot access chat persistence.
+
+The identical v1 `LLMService` contract is intentionally exposed at two trust
+boundaries: clients call it on the chat server, while the chat server calls it
+on Node 1. External `requester_id` and `authorized_context` fields are ignored
+by the chat gateway. Node 1 returns `UNAVAILABLE` on adapter failure; the gateway
+turns downstream `RpcError` values, including deadline expiry, into an explicit
+fallback response so chat remains available.
 
 ## Streaming decisions
 

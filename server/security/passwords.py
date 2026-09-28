@@ -14,7 +14,7 @@ R = 8
 P = 1
 DKLEN = 32
 SALT_BYTES = 16
-MIN_PASSWORD_LENGTH = 12
+MIN_PASSWORD_LENGTH = 8
 
 
 def validate_password(password: str) -> None:
@@ -58,4 +58,3 @@ def verify_password(password: str, encoded_hash: str) -> bool:
     except (ValueError, TypeError):
         return False
     return hmac.compare_digest(actual, expected)
-

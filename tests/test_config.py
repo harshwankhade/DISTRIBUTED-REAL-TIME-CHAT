@@ -93,6 +93,34 @@ class SettingsTests(unittest.TestCase):
         with self.assertRaisesRegex(ConfigurationError, "ALLOWED_FILE_TYPES"):
             load_settings({"ALLOWED_FILE_TYPES": " , "})
 
+    def test_phase4_llm_settings_are_configurable(self) -> None:
+        settings = load_settings(
+            {
+                "LLM_ADAPTER": "local",
+                "LLM_CONTEXT_WINDOW": "2048",
+                "LLM_MAX_OUTPUT_TOKENS": "128",
+                "LLM_THREADS": "6",
+                "LLM_GPU_LAYERS": "0",
+                "LLM_TEMPERATURE": "0.1",
+                "LLM_MAX_CONTEXT_MESSAGES": "12",
+                "LLM_MAX_CONTEXT_CHARS": "4096",
+                "LLM_REQUEST_TIMEOUT_SECONDS": "9",
+            }
+        )
+        self.assertEqual(settings.llm_adapter, "local")
+        self.assertEqual(settings.llm_context_window, 2048)
+        self.assertEqual(settings.llm_max_output_tokens, 128)
+        self.assertEqual(settings.llm_threads, 6)
+        self.assertEqual(settings.llm_gpu_layers, 0)
+        self.assertEqual(settings.llm_temperature, 0.1)
+        self.assertEqual(settings.llm_max_context_messages, 12)
+        self.assertEqual(settings.llm_max_context_chars, 4096)
+        self.assertEqual(settings.llm_request_timeout_seconds, 9)
+
+    def test_invalid_llm_adapter_is_rejected(self) -> None:
+        with self.assertRaisesRegex(ConfigurationError, "LLM_ADAPTER"):
+            load_settings({"LLM_ADAPTER": "cloud"})
+
 
 if __name__ == "__main__":
     unittest.main()

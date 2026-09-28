@@ -16,8 +16,12 @@ class PasswordSecurityTests(unittest.TestCase):
         self.assertFalse(verify_password("wrong-password", first))
 
     def test_short_password_is_rejected(self) -> None:
-        with self.assertRaisesRegex(ValueError, "at least 12"):
+        with self.assertRaisesRegex(ValueError, "at least 8"):
             hash_password("short")
+
+    def test_eight_character_password_is_accepted(self) -> None:
+        encoded = hash_password("harsh123")
+        self.assertTrue(verify_password("harsh123", encoded))
 
     def test_session_tokens_are_random_and_stored_as_hashes(self) -> None:
         first = generate_session_token()
@@ -29,4 +33,3 @@ class PasswordSecurityTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

@@ -307,6 +307,31 @@ class SQLiteMessageRepository:
         ).fetchall()
         return [(row["sequence"], _message_from_row(row)) for row in rows]
 
+    def list_context(
+        self,
+        channel_id: str,
+        *,
+        limit: int,
+        from_time: datetime | None = None,
+        to_time: datetime | None = None,
+    ) -> list[Message]:
+        clauses = ["channel_id = ?"]
+        parameters: list[object] = [channel_id]
+        if from_time is not None:
+            clauses.append("created_at >= ?")
+            parameters.append(_to_text(from_time))
+        if to_time is not None:
+            clauses.append("created_at <= ?")
+            parameters.append(_to_text(to_time))
+        parameters.append(limit)
+        rows = self._connection.execute(
+            f"""SELECT * FROM messages
+                WHERE {' AND '.join(clauses)}
+                ORDER BY sequence DESC LIMIT ?""",
+            tuple(parameters),
+        ).fetchall()
+        return [_message_from_row(row) for row in reversed(rows)]
+
 
 class SQLiteFileRepository:
     def __init__(self, connection: sqlite3.Connection) -> None:

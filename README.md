@@ -1,133 +1,137 @@
 # Distributed Real-time Chat and Collaboration Tool
 
-This Python/gRPC project is built one approved phase at a time for a distributed
-systems course. Phase 3 provides a working single-server collaboration system:
-access control, channel messages and history, live event streams, heartbeat
-presence, and authorized chunked file transfer.
+Milestone 1 is complete. This Python/gRPC application supports authenticated
+multi-user channels, live messages, history, presence, files, administration,
+and three local-AI tools. The chat application and Qwen LLM run as separate
+processes and communicate only through gRPC.
 
-## Current status
+Raft, replication, leader election, and failover are deliberately not present;
+those belong to Milestone 2.
 
-- Completed: Phase 0 - requirements and repository scaffold
-- Completed: Phase 1 - protobuf contracts and gRPC skeletons
-- Completed: Phase 2 - users, sessions, channels, and administration
-- Completed: Phase 3 - messaging, presence, and file sharing
-- Next only when explicitly requested: Phase 4 - separate local LLM service
-- Not implemented: LLM behavior, Raft, replication, failover, or recovery
+## Prerequisites
 
-## Setup
+- Windows 10/11 and Python 3.11 or newer
+- About 3 GB free disk space for the virtual environment and model
+- Acceptance of the Qwen2.5 model's `qwen-research` license
+- No API key or cloud account is used
 
-Requirements:
+Tkinter ships with standard Windows Python. Check it with:
 
-- Python 3.11 or newer
-- Windows command shell for convenience scripts
+```powershell
+python -c "import tkinter; print(tkinter.TkVersion)"
+```
 
-From the repository root:
+## Fresh setup
+
+Run these commands from the repository root:
 
 ```powershell
 python -m venv .venv
 .venv\Scripts\python -m pip install -r requirements.txt
-.\scripts\generate_stubs.cmd
-```
-
-## Configuration
-
-Copy the example file once and edit `.env` with your local values:
-
-```powershell
+.\scripts\install_llm_runtime.cmd
+.\scripts\download_model.cmd
 Copy-Item .env.example .env
 ```
 
-The processes automatically load `.env` from the repository root. Variables
-already set in the process environment take precedence, which allows deployment
-or one-off overrides without editing the file. `.env` is ignored by Git; do not
-commit it. Important Phase 3 settings are:
+The last download is Qwen2.5-3B-Instruct Q4_K_M (about 2.1 GB). It resumes a
+partial download. Edit `.env` and set strong local values for
+`SEED_ADMIN_PASSWORD`, `SEED_SAMPLE_PASSWORD`, `SMOKE_USERNAME`, and
+`SMOKE_PASSWORD`. `.env`, model files, uploads, databases, and logs are ignored
+by Git.
 
-- `CHAT_DATABASE_PATH` - this server's SQLite database file
-- `SESSION_TTL_SECONDS` - login-token lifetime
-- `CHAT_HOST` and `CHAT_PORT` - chat gRPC listen address
-- `GRPC_WORKERS`, `RPC_TIMEOUT_SECONDS`, and `SHUTDOWN_GRACE_SECONDS`
-- `MAX_MESSAGE_LENGTH` - accepted message length
-- `PRESENCE_TIMEOUT_SECONDS` - heartbeat expiry interval
-- `FILE_STORAGE_PATH`, `MAX_FILE_SIZE_BYTES`, and `FILE_CHUNK_SIZE_BYTES`
-- `ALLOWED_FILE_TYPES` - comma-separated accepted MIME types
+The checked-in protobuf bindings are ready to use. Regenerate them after a
+contract edit with `scripts\generate_stubs.cmd`.
 
-The example contains no credentials. Put local-only seed and smoke-test
-passwords in `.env`, and do not reuse real account passwords.
+## Configuration
 
-## Migrate and seed the database
+All runtime values come from `.env` or process environment variables. Process
+variables win. The important LLM values are:
 
-Apply migrations:
+- `LLM_ADAPTER=local` loads the downloaded GGUF; `mock` is deterministic and
+  useful for tests or a quick evaluator run.
+- `LLM_MODEL_PATH` is the local GGUF path.
+- `LLM_THREADS=8` and `LLM_GPU_LAYERS=0` provide a CPU-first default suitable
+  for the target 16 GB Intel laptop.
+- `LLM_MAX_CONTEXT_MESSAGES` and `LLM_MAX_CONTEXT_CHARS` bound private context.
+- `LLM_REQUEST_TIMEOUT_SECONDS` bounds chat-server calls to Node 1.
+- `LLM_CONTEXT_WINDOW`, `LLM_MAX_OUTPUT_TOKENS`, and `LLM_TEMPERATURE` control
+  local inference.
+
+Chat, session, presence, file, address, and storage settings are documented
+beside their defaults in `.env.example`. No port or credential is embedded in
+business logic.
+
+## Launch the complete Milestone 1 demo
+
+The one-command path migrates and seeds the database, starts the LLM and chat
+servers as separate background processes, writes logs under `logs/`, and opens
+the Tkinter client:
+
+```powershell
+.\scripts\start_milestone1.cmd
+```
+
+Open another user window with:
+
+```powershell
+.\scripts\start_client.cmd --gui
+```
+
+Stop the two background services with:
+
+```powershell
+.\scripts\stop_milestone1.cmd
+```
+
+You can also run each process in its own terminal:
 
 ```powershell
 .\scripts\migrate.cmd
-```
-
-For a non-interactive local seed, fill `SEED_ADMIN_PASSWORD` and
-`SEED_SAMPLE_PASSWORD` in `.env`, then run:
-
-```powershell
 .\scripts\seed_data.cmd
-```
-
-The default identities are one `admin` user and sample users `alice` and `bob`.
-If password variables are absent, the command prompts without echoing input.
-Running the command again skips existing users rather than duplicating them.
-
-## Run the system
-
-Start the chat server:
-
-```powershell
-.\scripts\start_chat.cmd
-```
-
-The independent LLM server remains a Phase 1 skeleton and may be started
-separately when needed:
-
-```powershell
 .\scripts\start_llm.cmd
+.\scripts\start_chat.cmd
+.\scripts\start_client.cmd --gui
 ```
 
-To run the transport smoke client against a seeded account:
+The local model may take several seconds to load. The GUI remains responsive
+while AI work runs. If Node 1 is unavailable or exceeds its deadline, the AI
+panel reports a fallback while login, messaging, history, files, and presence
+continue normally.
 
-```powershell
-.\scripts\start_client.cmd --smoke
-```
+## Suggested evaluator demonstration
 
-Set `SMOKE_USERNAME` and `SMOKE_PASSWORD` in `.env` first. For `alice`, use the
-same value as `SEED_SAMPLE_PASSWORD`.
+1. Log in as `admin`, create a channel, and create or manage a user.
+2. Open two more GUI instances, log in as sample users, and join the channel.
+3. Exchange messages and show that live events appear in each window.
+4. Leave heartbeats running, then close a client to demonstrate presence expiry
+   through the Presence RPC/tests.
+5. Upload a permitted file, copy its displayed file ID, download it from a
+   member account, and observe checksum verification. A non-member is rejected.
+6. Select the channel and use Smart reply, 24h summary, and Next steps.
+7. Stop only the LLM server and repeat an AI action: a fallback is returned;
+   send another chat message to prove chat remains available.
 
-The smoke test performs health, real login, authenticated event-stream
-keepalive, and stream cancellation. Stop servers with `Ctrl+C`.
+`start_client.cmd --smoke` remains available for a console health/login/stream
+check using `SMOKE_USERNAME` and `SMOKE_PASSWORD`.
 
-## Implemented behavior through Phase 3
+## What Milestone 1 implements
 
-- Passwords are salted and hashed with `scrypt`; plaintext passwords are never
-  stored.
-- Session tokens are generated with `secrets`, returned once, and stored only as
-  SHA-256 hashes.
-- Sessions expire, can be logged out, and are revoked when a user is disabled.
-- Admins can create users, enable/disable users, change roles, create/archive
-  channels, and add/remove channel members.
-- Active users can list channels, join active channels, and leave channels they
-  belong to.
-- Normal users cannot call administrator RPCs.
-- Archived channels reject joins and membership changes.
-- SQLite migrations and transactions preserve state across process restarts.
-- Members can send idempotent messages, page through durable history, and
-  receive new messages over a server stream.
-- Heartbeats mark sessions online; users become offline after the configured
-  timeout and presence changes are streamed.
-- File uploads and downloads are chunked. Uploads validate membership,
-  filename, type, size, message linkage, and SHA-256 checksum.
-- File metadata is durable in SQLite while file bytes are stored separately.
-- Repeated message and upload `client_request_id` values return the original
-  result rather than creating duplicates.
+- Salted `scrypt` password hashes, opaque expiring session tokens, logout, and
+  disabled-user enforcement.
+- Admin-only user status/role and channel/member operations.
+- Persistent channel membership and archive rules in per-server SQLite.
+- Idempotent messages, stable history pagination, and live server streams.
+- Heartbeat-based online/offline transitions and last-seen data.
+- Authorized chunked file transfer with size/type/path validation and SHA-256.
+- A separate gRPC LLM process with swappable deterministic mock and local
+  `llama-cpp-python` Qwen adapter.
+- An authenticated context gateway: it ignores caller-supplied context, checks
+  membership, loads only the selected channel/time range, applies message and
+  character limits, and then calls Node 1 with a deadline.
+- Tkinter desktop flows for login, channels, live chat, AI, files, heartbeats,
+  and basic administrator setup.
 
-Current assumption: every non-archived channel is discoverable and self-joinable
-by active users. Private/invite-only channels have not been requested.
-
-## Tests
+## Verification
 
 ```powershell
 .venv\Scripts\python -m compileall -q common domain proto server llm_server client tests scripts
@@ -135,21 +139,23 @@ by active users. Private/invite-only channels have not been requested.
 .venv\Scripts\python -m pip check
 ```
 
-Tests use temporary databases and ephemeral ports. They do not modify the
-configured development database.
+Tests use temporary databases and ephemeral ports. They prove authentication,
+authorization, persistence, concurrency, idempotency, streaming, file safety,
+LLM privacy filtering, time/context bounds, deadlines, fallback behavior, and
+continued chat operation while the LLM is offline.
 
-## Important documentation
+## Documentation
 
-- [Current architecture](docs/architecture.md)
+- [Architecture](docs/architecture.md)
 - [v1 API contracts](docs/api_contracts.md)
-- [Phase 2 report](docs/phases/phase_2_report.md)
-- [Phase 3 report](docs/phases/phase_3_report.md)
 - [Requirements and permissions](docs/requirements.md)
+- [Phase 4 report](docs/phases/phase_4_report.md)
 
-## Security and distributed-systems limitations
+## Known limitations
 
-Local gRPC connections are currently plaintext. There is no password-reset or
-token-refresh flow, rate limiting, audit-event persistence, LLM behavior, or
-Raft. Live streams and presence are process-local; clients recover durable
-messages through history after reconnecting. SQLite is local to one chat server
-and must never be mistaken for replicated state or consensus.
+This is a single chat server with local plaintext gRPC and local SQLite. Live
+streams and presence are process-local, and file bytes are stored on local
+disk. There is no password reset, TLS, rate limiting, durable audit log, private
+invite-only channels, or persistent AI output. Most importantly, there is no
+Raft log, replication, majority commit, leader election, failover, or recovery;
+none of those guarantees are claimed in Milestone 1.

@@ -21,7 +21,7 @@ Messaging, live presence, file storage, LLM behavior, and Raft were not added.
 - One chat server owns one SQLite database during Milestone 1.
 - Local development still uses plaintext gRPC. Deployment TLS is future work.
 - Usernames are case-insensitively unique and contain 3-64 safe characters.
-- Passwords must contain at least 12 characters.
+- Passwords must contain at least 8 characters.
 
 ## What was implemented
 
@@ -219,7 +219,7 @@ Copy-Item .env.example .env
 .venv\Scripts\python -m unittest discover -s tests -v
 ```
 
-Before seeding, edit `.env` and provide passwords of at least 12 characters.
+Before seeding, edit `.env` and provide passwords of at least 8 characters.
 
 Start the chat server in one terminal:
 

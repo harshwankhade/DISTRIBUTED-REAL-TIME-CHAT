@@ -1,4 +1,4 @@
-"""Construction of the Phase 3 chat gRPC server."""
+"""Construction of the Phase 4 chat gRPC server."""
 
 from __future__ import annotations
 
@@ -16,10 +16,12 @@ from proto.chat.v1 import (
     chat_pb2_grpc,
     file_pb2_grpc,
     health_pb2_grpc,
+    llm_pb2_grpc,
     presence_pb2_grpc,
 )
 from server.services import (
     AdminService,
+    AssistantGatewayService,
     AuthService,
     ChannelService,
     ChatService,
@@ -28,6 +30,7 @@ from server.services import (
     PresenceService,
 )
 from server.application.admin import AdminApplication
+from server.application.assistant import AssistantApplication, AuthorizedContextBuilder
 from server.application.auth import AuthApplication
 from server.application.channels import ChannelApplication
 from server.application.chat import ChatApplication
@@ -35,6 +38,7 @@ from server.application.files import FileApplication
 from server.application.presence import PresenceApplication
 from server.database import Database, apply_migrations
 from server.events import EventBroker
+from server.llm_client import LLMClient
 from server.repositories.sqlite import SQLiteUnitOfWorkFactory
 
 
@@ -44,7 +48,7 @@ def create_chat_server(
     bind_address: str | None = None,
     logger: LoggerAdapter | None = None,
 ) -> tuple[grpc.Server, str]:
-    """Create and register the Phase 3 chat-side services."""
+    """Create and register the Phase 4 chat-side services."""
 
     database = Database(settings.chat_database_path)
     apply_migrations(database)
@@ -74,6 +78,19 @@ def create_chat_server(
         max_size_bytes=settings.max_file_size_bytes,
         allowed_content_types=settings.allowed_file_types,
     )
+    llm_client = LLMClient(
+        settings.llm_endpoint.address,
+        timeout_seconds=settings.llm_request_timeout_seconds,
+    )
+    assistant_application = AssistantApplication(
+        AuthorizedContextBuilder(
+            unit_of_work_factory,
+            auth_application,
+            max_messages=settings.llm_max_context_messages,
+            max_chars=settings.llm_max_context_chars,
+        ),
+        llm_client,
+    )
 
     server = grpc.server(
         futures.ThreadPoolExecutor(max_workers=settings.grpc_workers),
@@ -101,6 +118,9 @@ def create_chat_server(
     )
     file_pb2_grpc.add_FileServiceServicer_to_server(
         FileService(file_application, chunk_size=settings.file_chunk_size_bytes), server
+    )
+    llm_pb2_grpc.add_LLMServiceServicer_to_server(
+        AssistantGatewayService(assistant_application), server
     )
     admin_pb2_grpc.add_AdminServiceServicer_to_server(
         AdminService(admin_application), server

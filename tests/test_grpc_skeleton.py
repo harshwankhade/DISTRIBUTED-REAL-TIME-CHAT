@@ -183,7 +183,7 @@ class LlmGrpcSkeletonTests(unittest.TestCase):
     def tearDownClass(cls) -> None:
         cls.server.stop(0).wait()
 
-    def test_llm_service_is_separate_and_unimplemented(self) -> None:
+    def test_llm_service_is_separate_and_uses_mock_adapter(self) -> None:
         request_id = "llm-request-1"
         channel = _channel(self.target, request_id)
         try:
@@ -195,18 +195,17 @@ class LlmGrpcSkeletonTests(unittest.TestCase):
                 timeout=2,
             )
             self.assertEqual(health.service, "llm-server")
-            with self.assertRaises(grpc.RpcError) as captured:
-                llm_pb2_grpc.LLMServiceStub(channel).GetSmartReply(
-                    llm_pb2.SmartReplyRequest(
-                        context=common_pb2.RequestContext(request_id=request_id),
-                        requester_id="user-1",
-                        channel_id="channel-1",
-                    ),
-                    timeout=2,
-                )
+            response = llm_pb2_grpc.LLMServiceStub(channel).GetSmartReply(
+                llm_pb2.SmartReplyRequest(
+                    context=common_pb2.RequestContext(request_id=request_id),
+                    requester_id="user-1",
+                    channel_id="channel-1",
+                ),
+                timeout=2,
+            )
         finally:
             channel.close()
-        self.assertEqual(captured.exception.code(), grpc.StatusCode.UNIMPLEMENTED)
+        self.assertEqual(response.answer, "Mock reply to: no recent messages")
 
 
 if __name__ == "__main__":

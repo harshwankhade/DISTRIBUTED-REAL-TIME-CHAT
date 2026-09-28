@@ -1,4 +1,4 @@
-# Architecture - Phase 3 Baseline
+# Architecture - Phase 4 / Milestone 1
 
 ## Current executable architecture
 
@@ -8,7 +8,7 @@ clients / tests
       | gRPC + request ID + bearer token
       v
 chat transport services
-  Auth / Channel / Admin / Chat / Presence / File
+  Auth / Channel / Admin / Chat / Presence / File / AI gateway
       |
       v
 application services + immutable commands
@@ -20,10 +20,15 @@ unit of work + repositories       transient presence tracker
       v                                   +--> heartbeat timeout
 per-server SQLite
   users, sessions, channels, messages, file metadata, idempotency keys
-      |
-      +--> stable references to file bytes under FILE_STORAGE_PATH
+  |
+  +--> stable references to file bytes under FILE_STORAGE_PATH
 
-independent LLM gRPC skeleton (no model behavior yet)
+AI gateway -- bounded authorized context + deadline --> independent LLM gRPC service
+                                                     |
+                                                     +--> deterministic mock, or
+                                                     +--> llama.cpp + local Qwen GGUF
+
+Tkinter clients --> all user-facing RPCs on the chat server
 ```
 
 ## Layer responsibilities
@@ -37,6 +42,29 @@ independent LLM gRPC skeleton (no model behavior yet)
 - **Repository layer:** owns SQL and maps rows to domain objects.
 - **Storage layer:** keeps file bytes outside SQLite using generated names while
   SQLite owns checksums, authorization linkage, and stable references.
+- **AI gateway:** authenticates the requester, verifies channel membership,
+  reads only server-owned messages for that channel/time range, enforces
+  context limits, and makes a deadline-bound gRPC call to Node 1.
+- **LLM process (Node 1):** validates the bounded context and performs inference.
+  It has no database, token-validation, file, or state-mutation access.
+- **Client layer:** a lightweight Tkinter GUI uses background threads for live
+  streams and inference so the desktop event loop stays responsive.
+
+## LLM trust and failure boundary
+
+Clients invoke `LLMService` on the chat-server address. Although the v1 request
+shape contains `requester_id` and `authorized_context` for the downstream call,
+the gateway deliberately ignores both fields from an external client. Identity
+comes only from the bearer session, and context comes only from the repository
+after a membership check. Node 1 receives that already-filtered subset through
+gRPC and cannot expand it.
+
+Context is bounded by `LLM_MAX_CONTEXT_MESSAGES`,
+`LLM_MAX_CONTEXT_CHARS`, and an optional summary time range. The client call to
+Node 1 has `LLM_REQUEST_TIMEOUT_SECONDS`. Connection failures, model failures,
+and deadline expiry produce an explicit safe fallback response; they do not
+make ordinary chat RPCs depend on LLM availability. Generated text is not
+written back to chat unless a user chooses to send it.
 
 ## Durable messaging and idempotency
 
@@ -83,6 +111,6 @@ recheck membership and stored-file integrity before streaming chunks.
 ## Future Raft compatibility
 
 Durable message and file-metadata writes are represented by immutable commands.
-IDs, timestamps, and checksums are fixed before repository application. Phase 3
+IDs, timestamps, and checksums are fixed before repository application. Phase 4
 still commits to one local SQLite database: there is no replicated log, leader,
 majority acknowledgement, failover, or cross-node stream fan-out.

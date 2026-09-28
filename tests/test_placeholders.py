@@ -15,9 +15,9 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 class PlaceholderProcessTests(unittest.TestCase):
     def test_each_process_reports_its_identity(self) -> None:
         expected = {
-            "server": ("chat-server", "chat-node-1", 3, False, False),
-            "llm_server": ("llm-server", "llm-node-1", 1, True, True),
-            "client": ("chat-client", "client-1", 3, True, True),
+            "server": ("chat-server", "chat-node-1", 4, False, False),
+            "llm_server": ("llm-server", "llm-node-1", 4, False, False),
+            "client": ("chat-client", "client-1", 4, True, True),
         }
         for module_name, (service, node_id, phase, placeholder, skeleton) in expected.items():
             with self.subTest(module=module_name):
@@ -26,6 +26,7 @@ class PlaceholderProcessTests(unittest.TestCase):
                     arguments.extend(("--bind", "127.0.0.1:0"))
                 with tempfile.TemporaryDirectory() as directory:
                     environment = os.environ.copy()
+                    environment["LLM_ADAPTER"] = "mock"
                     environment["CHAT_DATABASE_PATH"] = str(
                         Path(directory) / "startup.db"
                     )
