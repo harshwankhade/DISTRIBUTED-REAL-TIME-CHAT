@@ -99,11 +99,18 @@ class SQLiteRepositoryTests(unittest.TestCase):
 
         with SQLiteUnitOfWorkFactory(Database(self.database_path))() as unit_of_work:
             enriched_message = replace(message, sender_username="alice")
+            enriched_metadata = replace(metadata, uploader_username="alice")
             self.assertEqual(unit_of_work.messages.get(message.id), enriched_message)
-            self.assertEqual(unit_of_work.files.get(metadata.id), metadata)
+            self.assertEqual(unit_of_work.files.get(metadata.id), enriched_metadata)
             self.assertEqual(
                 unit_of_work.messages.get_by_client_request(user.id, "message-request-1"),
                 enriched_message,
+            )
+            self.assertEqual(
+                unit_of_work.files.list_page(
+                    channel.id, limit=10, before_sequence=None
+                )[0][1],
+                enriched_metadata,
             )
 
 

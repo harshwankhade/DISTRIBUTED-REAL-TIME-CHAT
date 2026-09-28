@@ -135,13 +135,27 @@ class ChatWindow:
         self.heading.configure(text=channel.name)
         try:
             history = list(self.api.history(channel.channel_id))
+            files = list(self.api.list_files(channel.channel_id))
         except Exception as exc:
             self._replace_messages("Join this channel to view its history.\n")
             self._set_status(_error_text(exc))
             return
         self._replace_messages("")
-        for message in reversed(history):
-            self._append_message(message.sender_username or message.sender_id, message.body)
+        timeline = [
+            (message.created_at.ToDatetime(), "message", message)
+            for message in history
+        ]
+        timeline.extend(
+            (metadata.created_at.ToDatetime(), "file", metadata)
+            for metadata in files
+        )
+        for _created_at, kind, item in sorted(timeline, key=lambda entry: entry[0]):
+            if kind == "message":
+                self._append_message(
+                    item.sender_username or item.sender_id, item.body
+                )
+            else:
+                self._append_file(item)
         self._start_stream(channel.channel_id)
 
     def _replace_messages(self, value: str) -> None:
@@ -153,6 +167,20 @@ class ChatWindow:
     def _append_message(self, sender: str, body: str) -> None:
         self.messages.configure(state="normal")
         self.messages.insert("end", f"{sender}: {body}\n")
+        self.messages.see("end")
+        self.messages.configure(state="disabled")
+
+    def _append_file(self, metadata) -> None:
+        self.messages.configure(state="normal")
+        uploader = metadata.uploader_username or metadata.uploader_id
+        self.messages.insert("end", f"{uploader} uploaded {metadata.original_name}  ")
+        button = ttk.Button(
+            self.messages,
+            text="Download",
+            command=lambda item=metadata: self._download_file(item),
+        )
+        self.messages.window_create("end", window=button)
+        self.messages.insert("end", "\n")
         self.messages.see("end")
         self.messages.configure(state="disabled")
 
@@ -175,6 +203,8 @@ class ChatWindow:
                             event.message.sender_username or event.message.sender_id,
                             event.message.body,
                         )
+                    elif event.type == chat_pb2.CHAT_EVENT_TYPE_FILE:
+                        self.root.after(0, self._append_file, event.file)
             except grpc.RpcError as exc:
                 if self.running and exc.code() != grpc.StatusCode.CANCELLED:
                     self.root.after(0, self._set_status, _error_text(exc))
@@ -283,6 +313,21 @@ class ChatWindow:
         try:
             self.api.download(file_id, Path(filename))
             self._set_status("Download complete and checksum verified")
+        except Exception as exc:
+            messagebox.showerror("Download", _error_text(exc))
+
+    def _download_file(self, metadata) -> None:
+        filename = filedialog.asksaveasfilename(
+            parent=self.root,
+            initialfile=metadata.original_name,
+        )
+        if not filename:
+            return
+        try:
+            self.api.download(metadata.file_id, Path(filename))
+            self._set_status(
+                f"Downloaded {metadata.original_name}; checksum verified"
+            )
         except Exception as exc:
             messagebox.showerror("Download", _error_text(exc))
 

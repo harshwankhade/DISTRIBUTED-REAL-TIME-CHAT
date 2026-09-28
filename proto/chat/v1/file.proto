@@ -7,6 +7,7 @@ import "proto/chat/v1/common.proto";
 service FileService {
   rpc UploadFile(stream UploadFileRequest) returns (UploadFileResponse);
   rpc DownloadFile(DownloadFileRequest) returns (stream DownloadFileResponse);
+  rpc ListChannelFiles(ListChannelFilesRequest) returns (ListChannelFilesResponse);
 }
 
 message UploadFileHeader {
@@ -43,3 +44,15 @@ message DownloadFileResponse {
   }
 }
 
+message ListChannelFilesRequest {
+  RequestContext context = 1;
+  string channel_id = 2;
+  int32 page_size = 3;
+  string page_token = 4;
+}
+
+message ListChannelFilesResponse {
+  ResponseStatus status = 1;
+  repeated FileMetadataView files = 2;
+  string next_page_token = 3;
+}

@@ -105,8 +105,9 @@ continue normally.
 3. Exchange messages and show that live events appear in each window.
 4. Leave heartbeats running, then close a client to demonstrate presence expiry
    through the Presence RPC/tests.
-5. Upload a permitted file, copy its displayed file ID, download it from a
-   member account, and observe checksum verification. A non-member is rejected.
+5. Upload a permitted file and watch it appear in the channel timeline. Use its
+   **Download** button from another member account and observe checksum
+   verification. A non-member is rejected.
 6. Select the channel and use Smart reply, 24h summary, and Next steps.
 7. Stop only the LLM server and repeat an AI action: a fallback is returned;
    send another chat message to prove chat remains available.
@@ -125,6 +126,8 @@ check using `SMOKE_USERNAME` and `SMOKE_PASSWORD`.
   retaining stable user IDs for authorization and persistence.
 - Heartbeat-based online/offline transitions and last-seen data.
 - Authorized chunked file transfer with size/type/path validation and SHA-256.
+- Paginated channel attachments and live upload events with an in-chat
+  **Download** button.
 - A separate gRPC LLM process with swappable deterministic mock and local
   `llama-cpp-python` Qwen adapter.
 - An authenticated context gateway: it ignores caller-supplied context, checks

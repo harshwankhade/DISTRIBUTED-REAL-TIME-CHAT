@@ -114,6 +114,13 @@ File metadata and upload idempotency keys are durable in SQLite. File bytes are
 not stored in SQLite and will not be copied into the future Raft log. Downloads
 recheck membership and stored-file integrity before streaming chunks.
 
+Members can page through existing attachment metadata for a channel. Repository
+reads join the uploader's user record so the GUI can display a username without
+duplicating it in the files table. A successful new upload publishes a
+process-local file event containing metadata only. The GUI merges message and
+file metadata by UTC creation time and embeds a checksum-verifying **Download**
+button. Missed live events are recovered from the durable file listing.
+
 ## Future Raft compatibility
 
 Durable message and file-metadata writes are represented by immutable commands.

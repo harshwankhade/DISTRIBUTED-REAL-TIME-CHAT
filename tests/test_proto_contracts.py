@@ -46,6 +46,16 @@ class ProtoContractTests(unittest.TestCase):
         service = file_pb2.DESCRIPTOR.services_by_name["FileService"]
         self.assertTrue(service.methods_by_name["UploadFile"].client_streaming)
         self.assertTrue(service.methods_by_name["DownloadFile"].server_streaming)
+        self.assertIn("ListChannelFiles", service.methods_by_name)
+
+    def test_file_metadata_and_chat_events_support_attachments(self) -> None:
+        uploader = common_pb2.FileMetadataView.DESCRIPTOR.fields_by_name[
+            "uploader_username"
+        ]
+        self.assertEqual(uploader.number, 9)
+        event_file = chat_pb2.ChatEvent.DESCRIPTOR.fields_by_name["file"]
+        self.assertEqual(event_file.number, 6)
+        self.assertEqual(chat_pb2.CHAT_EVENT_TYPE_FILE, 4)
 
 
 if __name__ == "__main__":

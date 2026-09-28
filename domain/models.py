@@ -127,6 +127,7 @@ class FileMetadata:
     checksum_sha256: str
     created_at: datetime
     message_id: str | None = None
+    uploader_username: str = ""
 
     def __post_init__(self) -> None:
         for field_name in (
@@ -141,6 +142,8 @@ class FileMetadata:
             _require_text(getattr(self, field_name), field_name)
         if self.size_bytes < 0:
             raise ValueError("size_bytes must not be negative")
+        if self.uploader_username:
+            _require_text(self.uploader_username, "uploader_username")
         _require_utc(self.created_at, "created_at")
 
 

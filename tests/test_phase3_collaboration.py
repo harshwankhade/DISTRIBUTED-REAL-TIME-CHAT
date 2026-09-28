@@ -286,6 +286,7 @@ class Phase3CollaborationTests(unittest.TestCase):
                 ), timeout=3,
             ).file
             self.assertEqual(uploaded.file_id, duplicate.file_id)
+            self.assertEqual(uploaded.uploader_username, "alice")
             responses = list(stub.DownloadFile(
                 file_pb2.DownloadFileRequest(
                     context=common_pb2.RequestContext(request_id="download-valid"),
@@ -307,6 +308,84 @@ class Phase3CollaborationTests(unittest.TestCase):
                         file_id=uploaded.file_id,
                     ), timeout=3,
                 ))
+        finally:
+            channel.close()
+        self.assertEqual(captured.exception.code(), grpc.StatusCode.PERMISSION_DENIED)
+
+    def test_files_are_paginated_and_streamed_only_to_channel_members(self) -> None:
+        stream_channel = self._channel("file-stream", "alice")
+        stream = chat_pb2_grpc.ChatServiceStub(stream_channel).SubscribeEvents(
+            chat_pb2.SubscribeEventsRequest(
+                context=common_pb2.RequestContext(request_id="file-stream"),
+                channel_ids=[self.channel_id],
+            ), timeout=3,
+        )
+        next(stream)
+        uploaded = []
+        for index, content in enumerate((b"first attachment", b"second attachment"), 1):
+            checksum = hashlib.sha256(content).hexdigest()
+            channel = self._channel(f"upload-list-{index}", "bob")
+            try:
+                uploaded.append(
+                    file_pb2_grpc.FileServiceStub(channel).UploadFile(
+                        self._upload_requests(
+                            self.channel_id,
+                            f"upload-list-{index}",
+                            f"file-list-{index}",
+                            content,
+                            checksum,
+                        ), timeout=3,
+                    ).file
+                )
+            finally:
+                channel.close()
+
+        event = next(stream)
+        while event.type != chat_pb2.CHAT_EVENT_TYPE_FILE:
+            event = next(stream)
+        self.assertIn(event.file.file_id, {item.file_id for item in uploaded})
+        self.assertEqual(event.file.uploader_username, "bob")
+        stream.cancel()
+        stream_channel.close()
+
+        channel = self._channel("list-files-1", "alice")
+        try:
+            stub = file_pb2_grpc.FileServiceStub(channel)
+            first = stub.ListChannelFiles(
+                file_pb2.ListChannelFilesRequest(
+                    context=common_pb2.RequestContext(request_id="list-files-1"),
+                    channel_id=self.channel_id,
+                    page_size=1,
+                ), timeout=3,
+            )
+            second = stub.ListChannelFiles(
+                file_pb2.ListChannelFilesRequest(
+                    context=common_pb2.RequestContext(request_id="list-files-2"),
+                    channel_id=self.channel_id,
+                    page_size=1,
+                    page_token=first.next_page_token,
+                ), timeout=3,
+            )
+        finally:
+            channel.close()
+        self.assertTrue(first.next_page_token)
+        listed = [*first.files, *second.files]
+        self.assertEqual(
+            {item.file_id for item in listed}, {item.file_id for item in uploaded}
+        )
+        self.assertEqual({item.uploader_username for item in listed}, {"bob"})
+
+        channel = self._channel("outsider-list-files", "outsider")
+        try:
+            with self.assertRaises(grpc.RpcError) as captured:
+                file_pb2_grpc.FileServiceStub(channel).ListChannelFiles(
+                    file_pb2.ListChannelFilesRequest(
+                        context=common_pb2.RequestContext(
+                            request_id="outsider-list-files"
+                        ),
+                        channel_id=self.channel_id,
+                    ), timeout=3,
+                )
         finally:
             channel.close()
         self.assertEqual(captured.exception.code(), grpc.StatusCode.PERMISSION_DENIED)

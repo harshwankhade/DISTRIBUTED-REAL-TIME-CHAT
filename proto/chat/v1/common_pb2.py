@@ -25,15 +25,15 @@ _sym_db = _symbol_database.Default()
 from google.protobuf import timestamp_pb2 as google_dot_protobuf_dot_timestamp__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1aproto/chat/v1/common.proto\x12\x13\x64istributed_chat.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"?\n\x0eRequestContext\x12\x12\n\nrequest_id\x18\x01 \x01(\t\x12\x19\n\x11\x63lient_request_id\x18\x02 \x01(\t\"d\n\x0eResponseStatus\x12-\n\x04\x63ode\x18\x01 \x01(\x0e\x32\x1f.distributed_chat.v1.StatusCode\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\x12\n\nrequest_id\x18\x03 \x01(\t\"D\n\rEmptyResponse\x12\x33\n\x06status\x18\x01 \x01(\x0b\x32#.distributed_chat.v1.ResponseStatus\"N\n\x0bUserSummary\x12\x0f\n\x07user_id\x18\x01 \x01(\t\x12\x10\n\x08username\x18\x02 \x01(\t\x12\x0c\n\x04role\x18\x03 \x01(\t\x12\x0e\n\x06status\x18\x04 \x01(\t\"D\n\x0e\x43hannelSummary\x12\x12\n\nchannel_id\x18\x01 \x01(\t\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\x10\n\x08\x61rchived\x18\x03 \x01(\x08\"\xba\x01\n\x0bMessageView\x12\x12\n\nmessage_id\x18\x01 \x01(\t\x12\x12\n\nchannel_id\x18\x02 \x01(\t\x12\x11\n\tsender_id\x18\x03 \x01(\t\x12\x0c\n\x04\x62ody\x18\x04 \x01(\t\x12.\n\ncreated_at\x18\x05 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x19\n\x11\x63lient_request_id\x18\x06 \x01(\t\x12\x17\n\x0fsender_username\x18\x07 \x01(\t\"\xd5\x01\n\x10\x46ileMetadataView\x12\x0f\n\x07\x66ile_id\x18\x01 \x01(\t\x12\x12\n\nchannel_id\x18\x02 \x01(\t\x12\x12\n\nmessage_id\x18\x03 \x01(\t\x12\x15\n\roriginal_name\x18\x04 \x01(\t\x12\x14\n\x0c\x63ontent_type\x18\x05 \x01(\t\x12\x12\n\nsize_bytes\x18\x06 \x01(\x03\x12\x17\n\x0f\x63hecksum_sha256\x18\x07 \x01(\t\x12.\n\ncreated_at\x18\x08 \x01(\x0b\x32\x1a.google.protobuf.Timestamp*^\n\nStatusCode\x12\x1b\n\x17STATUS_CODE_UNSPECIFIED\x10\x00\x12\x12\n\x0eSTATUS_CODE_OK\x10\x01\x12\x1f\n\x1bSTATUS_CODE_NOT_IMPLEMENTED\x10\x02\x62\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1aproto/chat/v1/common.proto\x12\x13\x64istributed_chat.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"?\n\x0eRequestContext\x12\x12\n\nrequest_id\x18\x01 \x01(\t\x12\x19\n\x11\x63lient_request_id\x18\x02 \x01(\t\"d\n\x0eResponseStatus\x12-\n\x04\x63ode\x18\x01 \x01(\x0e\x32\x1f.distributed_chat.v1.StatusCode\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\x12\n\nrequest_id\x18\x03 \x01(\t\"D\n\rEmptyResponse\x12\x33\n\x06status\x18\x01 \x01(\x0b\x32#.distributed_chat.v1.ResponseStatus\"N\n\x0bUserSummary\x12\x0f\n\x07user_id\x18\x01 \x01(\t\x12\x10\n\x08username\x18\x02 \x01(\t\x12\x0c\n\x04role\x18\x03 \x01(\t\x12\x0e\n\x06status\x18\x04 \x01(\t\"D\n\x0e\x43hannelSummary\x12\x12\n\nchannel_id\x18\x01 \x01(\t\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\x10\n\x08\x61rchived\x18\x03 \x01(\x08\"\xba\x01\n\x0bMessageView\x12\x12\n\nmessage_id\x18\x01 \x01(\t\x12\x12\n\nchannel_id\x18\x02 \x01(\t\x12\x11\n\tsender_id\x18\x03 \x01(\t\x12\x0c\n\x04\x62ody\x18\x04 \x01(\t\x12.\n\ncreated_at\x18\x05 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x19\n\x11\x63lient_request_id\x18\x06 \x01(\t\x12\x17\n\x0fsender_username\x18\x07 \x01(\t\"\xf0\x01\n\x10\x46ileMetadataView\x12\x0f\n\x07\x66ile_id\x18\x01 \x01(\t\x12\x12\n\nchannel_id\x18\x02 \x01(\t\x12\x12\n\nmessage_id\x18\x03 \x01(\t\x12\x15\n\roriginal_name\x18\x04 \x01(\t\x12\x14\n\x0c\x63ontent_type\x18\x05 \x01(\t\x12\x12\n\nsize_bytes\x18\x06 \x01(\x03\x12\x17\n\x0f\x63hecksum_sha256\x18\x07 \x01(\t\x12.\n\ncreated_at\x18\x08 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x19\n\x11uploader_username\x18\t \x01(\t*^\n\nStatusCode\x12\x1b\n\x17STATUS_CODE_UNSPECIFIED\x10\x00\x12\x12\n\x0eSTATUS_CODE_OK\x10\x01\x12\x1f\n\x1bSTATUS_CODE_NOT_IMPLEMENTED\x10\x02\x62\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'proto.chat.v1.common_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
   DESCRIPTOR._loaded_options = None
-  _globals['_STATUSCODE']._serialized_start=876
-  _globals['_STATUSCODE']._serialized_end=970
+  _globals['_STATUSCODE']._serialized_start=903
+  _globals['_STATUSCODE']._serialized_end=997
   _globals['_REQUESTCONTEXT']._serialized_start=84
   _globals['_REQUESTCONTEXT']._serialized_end=147
   _globals['_RESPONSESTATUS']._serialized_start=149
@@ -47,5 +47,5 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_MESSAGEVIEW']._serialized_start=472
   _globals['_MESSAGEVIEW']._serialized_end=658
   _globals['_FILEMETADATAVIEW']._serialized_start=661
-  _globals['_FILEMETADATAVIEW']._serialized_end=874
+  _globals['_FILEMETADATAVIEW']._serialized_end=901
 # @@protoc_insertion_point(module_scope)

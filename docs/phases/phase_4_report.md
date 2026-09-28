@@ -3,7 +3,7 @@
 ## Status
 
 Complete. Phase 4 adds a separate, usable local-LLM process, authenticated AI
-features on the chat server, and a lightweight Tkinter demo client. All 45
+features on the chat server, and a lightweight Tkinter demo client. All 47
 automated tests pass, and the real Qwen GGUF was loaded for a manual inference
 smoke check. No Raft functionality was added.
 
@@ -121,8 +121,9 @@ Modified:
 
 The user's local `.env` was updated to choose the local adapter and local model
 path. It remains ignored and is not a distributable configuration example.
-Generated protobuf files were not changed because the Phase 1 v1 contract was
-already sufficient.
+The original Phase 4 implementation did not require a contract change. Approved
+post-phase GUI enhancements later added backward-compatible fields and RPCs;
+their generated Python bindings were regenerated with the documented command.
 
 ## How the code works
 
@@ -152,7 +153,7 @@ stream, retrieve, upload, and download through the chat server.
 
 ## Tests performed
 
-Latest automated result: **45 tests passed**; `compileall` and `pip check` also
+Latest automated result: **47 tests passed**; `compileall` and `pip check` also
 passed. Coverage includes all earlier
 Phase 0-3 behavior plus forged-context rejection, channel privacy, non-member
 denial, summary ranges, context limits, deterministic model calls, deadline
@@ -205,3 +206,16 @@ contains `sender_username`; no existing field number or stored row changed.
 New messages use the authenticated username, persisted history joins the user
 record, and the Tkinter history/live-event views prefer the new field. Older
 clients remain wire-compatible and fall back to `sender_id`.
+
+The same approval was extended to typed in-chat attachments. `FileService` now
+offers authorized paginated channel-file metadata, `ChatEvent` has an additive
+file event, and `FileMetadataView` includes `uploader_username`. Existing file
+rows require no migration. The GUI merges files into the channel timeline and
+provides a **Download** button that uses the existing chunked, checksum-verified
+download path. Non-member listing and download remain forbidden.
+
+This attachment enhancement changed `common.proto`, `chat.proto`, `file.proto`
+and their generated Python bindings; `domain/models.py`; the SQLite, file
+application, gRPC construction, and service modules; `client/api.py` and
+`client/gui.py`; the Phase 3 collaboration, repository, and contract tests; and
+the README, architecture, API-contract, and Phase 4 documentation.

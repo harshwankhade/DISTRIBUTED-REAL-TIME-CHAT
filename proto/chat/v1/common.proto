@@ -57,4 +57,5 @@ message FileMetadataView {
   int64 size_bytes = 6;
   string checksum_sha256 = 7;
   google.protobuf.Timestamp created_at = 8;
+  string uploader_username = 9;
 }

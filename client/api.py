@@ -202,6 +202,27 @@ class ChatApi:
             destination.unlink(missing_ok=True)
             raise ValueError("download checksum verification failed")
 
+    def list_files(self, channel_id: str):
+        files = []
+        page_token = ""
+        while True:
+            request_id = new_request_id()
+            response = file_pb2_grpc.FileServiceStub(
+                self._channel(request_id)
+            ).ListChannelFiles(
+                file_pb2.ListChannelFilesRequest(
+                    context=self._context(request_id),
+                    channel_id=channel_id,
+                    page_size=100,
+                    page_token=page_token,
+                ),
+                timeout=self._timeout,
+            )
+            files.extend(response.files)
+            page_token = response.next_page_token
+            if not page_token:
+                return files
+
     def _assistant(self, channel_id: str, operation: str) -> tuple[str, str]:
         request_id = new_request_id()
         stub = llm_pb2_grpc.LLMServiceStub(self._channel(request_id))

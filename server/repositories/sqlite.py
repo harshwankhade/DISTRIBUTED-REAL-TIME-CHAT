@@ -79,6 +79,7 @@ def _file_from_row(row: sqlite3.Row) -> FileMetadata:
         checksum_sha256=row["checksum_sha256"],
         created_at=_from_text(row["created_at"]),
         message_id=row["message_id"],
+        uploader_username=row["uploader_username"],
     )
 
 
@@ -371,7 +372,10 @@ class SQLiteFileRepository:
 
     def get(self, file_id: str) -> FileMetadata | None:
         row = self._connection.execute(
-            "SELECT * FROM files WHERE id = ?", (file_id,)
+            """SELECT files.*, users.username AS uploader_username
+               FROM files JOIN users ON users.id = files.uploader_id
+               WHERE files.id = ?""",
+            (file_id,),
         ).fetchone()
         return None if row is None else _file_from_row(row)
 
@@ -379,11 +383,31 @@ class SQLiteFileRepository:
         self, uploader_id: str, client_request_id: str
     ) -> FileMetadata | None:
         row = self._connection.execute(
-            """SELECT * FROM files
-               WHERE uploader_id = ? AND client_request_id = ?""",
+            """SELECT files.*, users.username AS uploader_username
+               FROM files JOIN users ON users.id = files.uploader_id
+               WHERE files.uploader_id = ? AND files.client_request_id = ?""",
             (uploader_id, client_request_id),
         ).fetchone()
         return None if row is None else _file_from_row(row)
+
+    def list_page(
+        self, channel_id: str, *, limit: int, before_sequence: int | None
+    ) -> list[tuple[int, FileMetadata]]:
+        condition = "" if before_sequence is None else "AND files.rowid < ?"
+        parameters: tuple[object, ...]
+        if before_sequence is None:
+            parameters = (channel_id, limit)
+        else:
+            parameters = (channel_id, before_sequence, limit)
+        rows = self._connection.execute(
+            f"""SELECT files.*, files.rowid AS file_sequence,
+                       users.username AS uploader_username
+                FROM files JOIN users ON users.id = files.uploader_id
+                WHERE files.channel_id = ? {condition}
+                ORDER BY files.rowid DESC LIMIT ?""",
+            parameters,
+        ).fetchall()
+        return [(row["file_sequence"], _file_from_row(row)) for row in rows]
 
 
 class SQLiteUnitOfWork:

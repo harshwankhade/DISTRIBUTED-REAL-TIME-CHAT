@@ -74,6 +74,7 @@ def create_chat_server(
     file_application = FileApplication(
         unit_of_work_factory,
         auth_application,
+        events,
         storage_path=settings.file_storage_path,
         max_size_bytes=settings.max_file_size_bytes,
         allowed_content_types=settings.allowed_file_types,

@@ -40,7 +40,8 @@ internal UUIDs. The server remains authoritative for both values.
 - `ChannelService`: working create/list/join/leave with authorization.
 - `ChatService`: message send/history plus server-streamed events.
 - `PresenceService`: heartbeat/status plus presence event stream.
-- `FileService`: chunked client-streamed upload and server-streamed download.
+- `FileService`: chunked client-streamed upload, server-streamed download, and
+  authorized paginated channel-file listing.
 - `AdminService`: working user, role/status, channel archive, and membership
   administration.
 - `LLMService`: authenticated AI gateway. It rejects non-members, ignores
@@ -74,6 +75,12 @@ empty user filter means all users; a non-empty filter selects those user IDs.
 `FileService.UploadFile` is client streaming: the first item is a metadata
 header and later items are byte chunks. `DownloadFile` is server streaming: its
 first response contains metadata and later responses contain byte chunks.
+`ListChannelFiles` is unary and returns newest-first metadata pages using an
+opaque cursor. All three operations require current channel membership.
+
+`ChatService.SubscribeEvents` also emits `CHAT_EVENT_TYPE_FILE` with a typed
+`FileMetadataView` after a new upload commits. File metadata includes the stable
+uploader ID and additive `uploader_username`; file bytes never enter the event.
 
 ## Regenerating bindings
 

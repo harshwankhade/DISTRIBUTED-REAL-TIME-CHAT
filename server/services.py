@@ -106,6 +106,7 @@ def _file_view(metadata: FileMetadata) -> common_pb2.FileMetadataView:
         size_bytes=metadata.size_bytes,
         checksum_sha256=metadata.checksum_sha256,
         created_at=_timestamp(metadata.created_at),
+        uploader_username=metadata.uploader_username,
     )
 
 
@@ -337,6 +338,15 @@ class ChatService(chat_pb2_grpc.ChatServiceServicer):
                             request_id=request_id,
                             message=_message_view(event.payload),
                         )
+                elif event.kind == "file" and isinstance(event.payload, FileMetadata):
+                    if event.payload.channel_id in channel_ids:
+                        yield chat_pb2.ChatEvent(
+                            event_id=event.id,
+                            type=chat_pb2.CHAT_EVENT_TYPE_FILE,
+                            occurred_at=_timestamp(event.occurred_at),
+                            request_id=request_id,
+                            file=_file_view(event.payload),
+                        )
         finally:
             subscription.close()
 
@@ -463,6 +473,31 @@ class FileService(file_pb2_grpc.FileServiceServicer):
                 if not chunk:
                     break
                 yield file_pb2.DownloadFileResponse(chunk=chunk)
+
+    def ListChannelFiles(
+        self,
+        request: file_pb2.ListChannelFilesRequest,
+        context: grpc.ServicerContext,
+    ) -> file_pb2.ListChannelFilesResponse:
+        request_id = require_request_id(request.context, context)
+        require_text(request.channel_id, "channel_id", request_id, context)
+        if request.page_size < 0:
+            abort_invalid(context, request_id, "page_size must not be negative")
+        try:
+            page = self._application.list_files(
+                get_auth_token(),
+                request.channel_id,
+                request.page_size,
+                request.page_token,
+                request_id=request_id,
+            )
+        except ApplicationError as error:
+            abort_application_error(context, error, request_id)
+        return file_pb2.ListChannelFilesResponse(
+            status=_ok_status(request_id),
+            files=[_file_view(metadata) for metadata in page.files],
+            next_page_token=page.next_page_token,
+        )
 
 
 class AssistantGatewayService(llm_pb2_grpc.LLMServiceServicer):

@@ -45,6 +45,7 @@ enum ChatEventType {
   CHAT_EVENT_TYPE_KEEPALIVE = 1;
   CHAT_EVENT_TYPE_MESSAGE = 2;
   CHAT_EVENT_TYPE_PRESENCE = 3;
+  CHAT_EVENT_TYPE_FILE = 4;
 }
 
 message ChatEvent {
@@ -53,5 +54,5 @@ message ChatEvent {
   google.protobuf.Timestamp occurred_at = 3;
   string request_id = 4;
   MessageView message = 5;
+  FileMetadataView file = 6;
 }
-
