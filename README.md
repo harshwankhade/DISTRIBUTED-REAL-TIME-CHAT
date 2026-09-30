@@ -1,12 +1,8 @@
 # Distributed Real-time Chat and Collaboration Tool
 
-Milestone 1 is complete. This Python/gRPC application supports authenticated
-multi-user channels, live messages, history, presence, files, channel-owner management,
-and three local-AI tools. The chat application and Qwen LLM run as separate
-processes and communicate only through gRPC.
+This Python/gRPC application supports authenticated
+multi-user channels, live messages, history, presence, files, channel-owner management,Band three local-AI tools. The chat application and Qwen LLM run as separate processes and communicate only through gRPC.
 
-Raft, replication, leader election, and failover are deliberately not present;
-those belong to Milestone 2.
 
 ## Prerequisites
 
@@ -30,14 +26,23 @@ python -m venv .venv
 .venv\Scripts\python -m pip install -r requirements.txt
 .\scripts\install_llm_runtime.cmd
 .\scripts\download_model.cmd
-Copy-Item .env.example .env
 ```
 
 The last download is Qwen2.5-3B-Instruct Q4_K_M (about 2.1 GB). It resumes a
-partial download. Edit `.env` for your local settings. Accounts are created
+partial download. A fresh checkout runs with the built-in defaults and the
+deterministic mock LLM; no `.env` file is required. To use the downloaded local
+model, create a local `.env` file containing:
+
+```dotenv
+LLM_ADAPTER=local
+LLM_MODEL_PATH=models/qwen2.5-3b-instruct-q4_k_m.gguf
+```
+
+Add other settings to `.env` only if you need to override the defaults.
+Accounts are created
 with **Register** in the GUI; no seeded administrator or password is required.
 For the optional smoke client, set `SMOKE_USERNAME` and `SMOKE_PASSWORD`.
-`.env`, model files, uploads, databases, and logs are ignored
+`.env`, `.env.example`, model files, uploads, databases, and logs are ignored
 by Git.
 
 The checked-in protobuf bindings are ready to use. Regenerate them after a
@@ -45,7 +50,8 @@ contract edit with `scripts\generate_stubs.cmd`.
 
 ## Configuration
 
-All runtime values come from `.env` or process environment variables. Process
+All runtime values have validated defaults in `common/config.py`. An optional
+local `.env` or process environment variable can override them; process
 variables win. The important LLM values are:
 
 - `LLM_ADAPTER=local` loads the downloaded GGUF; `mock` is deterministic and
@@ -58,9 +64,9 @@ variables win. The important LLM values are:
 - `LLM_CONTEXT_WINDOW`, `LLM_MAX_OUTPUT_TOKENS`, and `LLM_TEMPERATURE` control
   local inference.
 
-Chat, session, presence, file, address, and storage settings are documented
-beside their defaults in `.env.example`. No port or credential is embedded in
-business logic.
+Chat, session, presence, file, address, and storage setting names and defaults
+are defined in `common/config.py`. No port or credential is embedded in
+business logic. `.env.example` is no longer distributed in new checkouts.
 
 ## Launch the complete Milestone 1 demo
 
@@ -100,40 +106,7 @@ while AI work runs. If Node 1 is unavailable or exceeds its deadline, the AI
 panel reports a fallback while login, messaging, history, files, and presence
 continue normally.
 
-On an older database, the first start makes a timestamped `.bak` SQLite copy
-before deleting the former admin account and channels it created. Their
-messages and file metadata are removed with those channels, as requested;
-uploaded bytes remain in storage but are no longer accessible through the app.
-Stop old server processes before starting this version. Existing ordinary-user
-accounts remain and can log in with their previous passwords.
-
-## Suggested evaluator demonstration
-
-1. Register as Alice and create a channel. The creator is its owner and first member.
-2. Open two more GUI instances; register Bob and Charlie. They can see registered
-   users and channels on the left, then select the channel and request to join.
-3. In Alice's window, approve the pop-up join requests (polled every five seconds).
-   Select the channel to see its members on the right. Alice has a Remove
-   button beside each other member; Bob can view the roster but cannot remove.
-   To add someone directly, select them under Registered users, click
-   **Owner: add selected user**, and choose one of your channels in the dropdown.
-4. Exchange messages and show that live events appear in each window.
-5. Leave heartbeats running, then close a client to demonstrate presence expiry
-   in the registered-user list and selected channel's member list. The member
-   header also shows how many of that channel's members are online.
-6. Upload a permitted file and watch it appear in the channel timeline. Use its
-   **Download** button from another member account and observe checksum
-   verification. A non-member is rejected.
-7. Select the channel and use Smart reply, 24h summary, and Next steps.
-8. Stop only the LLM server and repeat an AI action: a fallback is returned;
-   send another chat message to prove chat remains available.
-9. Optionally, as Alice select the channel and choose **Owner: delete channel**.
-   Confirm that it disappears for all users, with its history and file records.
-
-`start_client.cmd --smoke` remains available for a console health/login/stream
-check using `SMOKE_USERNAME` and `SMOKE_PASSWORD`.
-
-## What Milestone 1 implements
+## Current Features
 
 - Salted `scrypt` password hashes, opaque expiring session tokens, logout, and
   disabled-user enforcement.
@@ -161,29 +134,6 @@ check using `SMOKE_USERNAME` and `SMOKE_PASSWORD`.
 - Tkinter desktop flows for registration/login, user and channel discovery,
   owner approvals, live chat, AI, files, and heartbeats.
 
-## Verification
-
-```powershell
-.venv\Scripts\python -m compileall -q common domain proto server llm_server client tests scripts
-.venv\Scripts\python -m unittest discover -s tests -v
-.venv\Scripts\python -m pip check
-```
-
-Tests use temporary databases and ephemeral ports. They prove authentication,
-authorization, persistence, concurrency, idempotency, streaming, file safety,
-LLM privacy filtering, time/context bounds, deadlines, fallback behavior, and
-continued chat operation while the LLM is offline.
-
-## Documentation
-
-- [Architecture](docs/architecture.md)
-- [v1 API contracts](docs/api_contracts.md)
-- [Requirements and permissions](docs/requirements.md)
-- [Phase 4 report](docs/phases/phase_4_report.md)
-- [Channel-owner enhancement](docs/phases/channel_owner_enhancement.md)
-- [Channel management enhancement](docs/phases/channel_management_enhancement.md)
-- [Owner-channel picker enhancement](docs/phases/owner_channel_picker_enhancement.md)
-- [Presence GUI enhancement](docs/phases/presence_gui_enhancement.md)
 
 ## Known limitations
 
